@@ -12,25 +12,25 @@ async function bootstrap() {
   app.set('trust proxy', 1);
 
   // 1. Create an array of allowed origins
-const allowedOrigins = [
-  process.env.ALLOWED_ORIGIN, 
-  'http://localhost:5173', 
-  'http://localhost:3001'
-].filter((origin): origin is string => origin !== undefined); // removes 'undefined' if the env variable isn't set
+  const allowedOrigins = [
+    process.env.ALLOWED_ORIGIN,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter((origin): origin is string => origin !== undefined); // removes 'undefined' if the env variable isn't set
 
-app.enableCors({
-  origin: allowedOrigins,
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  credentials: true,
-  optionsSuccessStatus: 200,
-});
+  app.enableCors({
+    origin: allowedOrigins,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    optionsSuccessStatus: 200,
+  });
 
-app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api');
 
   // Interceptors should usually come AFTER CORS/Prefix setup
   const auditInterceptor = app.get(AuditInterceptor);
   app.useGlobalInterceptors(auditInterceptor);
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3001);
 }
 bootstrap();

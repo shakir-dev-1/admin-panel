@@ -1,5 +1,4 @@
-
-  // src/admin/business/business.controller.ts
+// src/admin/business/business.controller.ts
 import {
   Controller,
   Get,
@@ -7,7 +6,6 @@ import {
   Patch,
   Post,
   UseGuards,
-  Req,
   Query,
 } from '@nestjs/common';
 import { BusinessService } from './business.service.js';
@@ -52,9 +50,7 @@ export class BusinessController {
   }
 
   @Post('payments/:paymentIntentId/refund')
-  refundPayment(
-    @Param('paymentIntentId') paymentIntentId: string,
-  ) {
+  refundPayment(@Param('paymentIntentId') paymentIntentId: string) {
     return this.businessService.refundPayment(paymentIntentId);
   }
 
@@ -95,10 +91,10 @@ export class BusinessController {
   }
 
   @Patch(':id/cancel-subscription')
-  cancelSubscription(@Param('id') id: string, @Req() req) {
-    return this.businessService.cancelSubscription(id, req.user.adminId);
+  cancelSubscription(@Param('id') id: string) {
+    return this.businessService.cancelSubscription(id);
   }
- 
+
   @Get(':id/disputes')
   getDisputes(@Param('id') businessId: string) {
     return this.businessService.getDisputes(businessId);

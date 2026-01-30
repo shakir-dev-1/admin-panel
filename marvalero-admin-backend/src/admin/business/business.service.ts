@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -23,7 +25,7 @@ export class BusinessService {
       stripeCustomerId: business.stripeCustomerId,
       stripeSubscriptionId: business.stripeSubscriptionId,
       subscriptionPlan: business.subscriptionPlan,
-      subscriptionStatus: business.subscriptionStatus
+      subscriptionStatus: business.subscriptionStatus,
     }));
   }
 
@@ -38,9 +40,9 @@ export class BusinessService {
       name: business.name,
       user: business.user,
       stripeCustomerId: business.stripeCustomerId,
-      stripeSubscriptionId: business.stripeSubscriptionId,      
+      stripeSubscriptionId: business.stripeSubscriptionId,
       subscriptionPlan: business.subscriptionPlan,
-      subscriptionStatus: business.subscriptionStatus
+      subscriptionStatus: business.subscriptionStatus,
     };
   }
 
@@ -100,7 +102,7 @@ export class BusinessService {
     );
   }
 
-  async cancelSubscription(id: string, adminId: string) {
+  async cancelSubscription(id: string) {
     console.log('Canceling subscription for business ID:', id);
     const biz = await this.prisma.business.findUnique({
       where: { userId: id },
@@ -171,60 +173,6 @@ export class BusinessService {
     });
     return disputes.data;
   }
-
-  // async getAllPayments(limit = 50, starting_after?: string) {
-  //   const listParams: Stripe.PaymentIntentListParams = { limit };
-  //   if (starting_after) listParams.starting_after = starting_after;
-
-  //   // 1. Fetch from Stripe
-  //   const payments = await this.stripe.paymentIntents.list(listParams);
-
-  //   // 2. Identify unique Stripe Customer IDs from the batch
-  //   const stripeCustomerIds = [
-  //     ...new Set(
-  //       payments.data.map((p) => p.customer as string).filter((id) => !!id),
-  //     ),
-  //   ];
-
-  //   // 3. Batch fetch businesses from DB that match these IDs
-  //   const businesses = await this.prisma.business.findMany({
-  //     where: { stripeCustomerId: { in: stripeCustomerIds } },
-  //     include: { user: { select: { name: true, email: true } } },
-  //   });
-
-  //   // 4. Create a lookup map for O(1) access
-  //   const businessMap = new Map(businesses.map((b) => [b.stripeCustomerId, b]));
-
-  //   // 5. Format the data for the frontend
-  //   const formattedData = payments.data.map((pi) => {
-  //     const biz = businessMap.get(pi.customer as string);
-
-  //     return {
-  //       id: pi.id,
-  //       stripePaymentId: pi.id,
-  //       description: pi.description || 'Payment',
-  //       amount: pi.amount,
-  //       currency: pi.currency,
-  //       status: pi.status,
-  //       // Priority: DB User Name -> Stripe Metadata -> Default
-  //       userName: biz?.user?.name || pi.metadata?.userName || 'Unknown User',
-  //       userEmail: biz?.user?.email || pi.receipt_email || 'No Email',
-  //       businessId: biz?.id || pi.metadata?.businessId,
-  //       businessName: biz?.name || pi.metadata?.businessName,
-  //       createdAt: new Date(pi.created * 1000).toISOString(),
-  //       customerId: pi.customer as string,
-  //     };
-  //   });
-
-  //   return {
-  //     data: formattedData,
-  //     hasMore: payments.has_more,
-  //     nextCursor:
-  //       payments.data.length > 0
-  //         ? payments.data[payments.data.length - 1].id
-  //         : undefined,
-  //   };
-  // }
 
   // In your BusinessService's getAllPayments method:
   async getAllPayments(limit = 50, cursor?: string) {
@@ -332,23 +280,4 @@ export class BusinessService {
       totalRefunded: (stats._sum.refundAmount || 0) / 100,
     };
   }
-
-  // async getGlobalPaymentStats() {
-  //   // Production Tip: Don't use .list() for stats if you have >1000 payments.
-  //   // Use Stripe's Balance APIs or query your own DB 'Transactions' table.
-  //   // For now, this is fixed to be accurate:
-  //   const allPayments = await this.stripe.paymentIntents.list({ limit: 100 });
-  //   const allRefunds = await this.stripe.refunds.list({ limit: 100 });
-
-  //   return {
-  //     totalTransactions: allPayments.data.length,
-  //     completedRevenue:
-  //       allPayments.data
-  //         .filter((p) => p.status === 'succeeded')
-  //         .reduce((acc, p) => acc + p.amount_received, 0) / 100,
-  //     totalVolume: allPayments.data.reduce((acc, p) => acc + p.amount, 0) / 100,
-  //     totalRefunded:
-  //       allRefunds.data.reduce((acc, r) => acc + r.amount, 0) / 100,
-  //   };
-  // }
 }

@@ -1,7 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
+
+interface AdminPayload {
+  id: string | number;
+}
+
+export type SafeAdmin = Omit<AdminPayload, 'password'>;
 
 @Injectable()
 export class AuthService {
@@ -12,8 +19,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async validateAdmin(email: string, password: string) {
-    // Input validation
+  async validateAdmin(email: string, password: string): Promise<SafeAdmin> {
     if (!email || !password) {
       throw new UnauthorizedException('Email and password are required');
     }
@@ -50,10 +56,10 @@ export class AuthService {
     return result;
   }
 
-  async login(admin: any) {
+  login(admin: SafeAdmin) {
     const payload = {
-      sub: admin.id, // Make sure this matches what you expect
-      isAdmin: true, // Make sure this is boolean true, not string
+      sub: admin.id,
+      isAdmin: true,
     };
 
     this.logger.debug(`Creating JWT with payload: ${JSON.stringify(payload)}`);

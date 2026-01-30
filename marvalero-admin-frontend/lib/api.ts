@@ -47,7 +47,7 @@ export async function fetchWithAuth<T>(
 export async function postWithAuth<T>(
   url: string,
   token: string,
-  data?: any
+  data?: unknown
 ): Promise<T> {
   return fetchWithAuth<T>(url, token, {
     method: 'POST',

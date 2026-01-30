@@ -1,10 +1,11 @@
 # Node modules
 **/node_modules
 **/dist
+**/.next       
 **/.env
 **/.env.local
 
-# Vite cache
+# Vite cache (if applicable)
 **/.vite
 
 # Logs

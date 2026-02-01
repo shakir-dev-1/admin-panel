@@ -1,0 +1,30 @@
+{
+    "name": "Marvalero Monorepo",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspaces/marvalero-admin",
+    
+    "features": {
+        // Only include features NOT already in the base image
+        "ghcr.io/devcontainers/features/common-utils:2.5.6": {
+            "configureZshAsDefaultShell": true
+        }
+    },
+
+    "forwardPorts": [3000, 3001],
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "firsttris.vscode-jest-runner",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "nestjs.nestjs-tools",
+                "bruno-api-client.bruno"
+            ]
+        }
+    },
+
+    // Runs once the container is created
+"postCreateCommand": "cd frontend && npm install && cd ../backend && npm install"
+}

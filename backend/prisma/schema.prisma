@@ -1,0 +1,1165 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client"
+  previewFeatures = ["postgresqlExtensions"]
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  extensions = [postgis]
+}
+
+model Admin {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  auditLogs     AdminAuditLog[]
+}
+
+model AdminAuditLog {
+  id            String    @id @default(uuid())
+  adminId       String?
+  actionType    String
+  targetUserId  String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+
+  admin         Admin?     @relation(fields: [adminId], references: [id])  
+
+  @@index([adminId])
+  @@index([actionType])
+  @@index([createdAt])
+}
+        
+
+model Scope {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deleted     Boolean     @default(false)
+  name        String      @unique
+  description String?
+  roleScopes  RoleScope[]
+
+  @@map("scopes")
+}
+
+model Role {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deleted     Boolean     @default(false)
+  name        Roles      @unique // e.g., "OWNER", "EMPLOYEE", "ADMIN"
+  description String?
+  roleScopes  RoleScope[]
+
+  BusinessMember BusinessMember[]
+
+  @@map("roles")
+}
+
+model RoleScope {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deleted   Boolean  @default(false)
+  roleId    String
+  scopeId   String
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  scope     Scope    @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, scopeId])
+  @@map("role_scopes")
+}
+
+model RefreshToken {
+  id             String        @id @default(uuid())
+  token          String
+  userAgent      String
+  lastLogin      DateTime      @default(now())
+  ipAddress      String?
+  country        String?
+  city           String?
+  latitude       Float?
+  longitude      Float?
+  countryCode    String?
+  regionName     String?
+  timezone       String?
+  device         String?
+  deviceToken    String?
+  businessUserId String?
+  influencerId   String?
+  userId         String?
+  businessUser   BusinessUser? @relation(fields: [businessUserId], references: [id], onDelete: Cascade)
+  infleuncer     Influencer?   @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([influencerId, userAgent])
+  @@unique([businessUserId, userAgent])
+  @@unique([userId, userAgent])
+  @@index([id], name: "refresh_token_id_index")
+  @@index([deviceToken], name: "refresh_token_device_token_index")
+  @@index([businessUserId], name: "refresh_token_user_id_index")
+  @@map("refreshTokens")
+}
+
+  model BusinessUser {
+    id                        String         @id @default(uuid())
+    clerkUserId               String         @unique
+    email                     String         @unique
+    businessUserType          BusinessUserType @default(REGULAR)
+    username                  String?        @unique
+    avatarId                  String?        @unique
+    referralCode              String         @unique
+    inviteCode                String?
+    firstName                 String?
+    lastName                  String?
+    fullName                  String?
+    city                      String?
+    zipcode                   String?
+    phoneNumber               String?        @unique
+    alternativePhoneNumber    String?
+    address                   String?
+    state                     String?
+    homeNumber                String?
+    floor                     String?
+    street                    String?
+    area                      String?
+    sector                    String?
+    password                  String?
+    gender                    String?
+    dateOfBirth               DateTime?      @db.Date
+    avatar                    File?          @relation(fields: [avatarId], references: [id], onDelete: SetNull)
+    isEmailConfirmed          Boolean        @default(false)
+    isAgreementAccepted       Boolean        @default(false)
+    twoFactorEnabled          Boolean        @default(false)
+    twoFactorSecret           String?
+    twoFactorType             TwoFactorType?
+    isEmployeeConsentApproved Boolean        @default(false)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    businesses    BusinessMember[]
+    refreshTokens RefreshToken[]
+    invitations Invitations[] @relation("businessUserToInvitations")
+    rewardReceived Reward[] @relation("businessUserToReward")
+    rewardReferred Reward[] @relation("referredByBusinessUserToReward")
+
+    businessUserSettings BusinessUserSettings?
+
+    @@index([id], name: "business_user_id_index")
+    @@index([email], name: "business_user_email_index")
+    @@index([username], name: "business_user_username_index")
+    @@index([fullName], name: "business_user_full_name_index")
+    @@index([referralCode], name: "business_user_referral_code_index")
+    @@index([inviteCode], name: "business_user_invite_code_index")
+    @@map("businessUsers")
+}
+
+model Business {
+  id                     String   @id @default(uuid())
+  clerkOrganizationId    String
+  stripeAccountId        String?
+  locationTitle          String?
+  name                   String
+  description            String?
+  industryType           String[]
+  city                   String
+  zipcode                String
+  address                String?
+  state                  String?
+  prePayment             Int      @default(0)
+  office                 String?
+  floor                  String?
+  street                 String?
+  area                   String?
+  sector                 String?
+  phoneNumber            String?
+  email                  String?
+  isEmailConfirmed       Boolean  @default(false)
+  isPhoneConfirmed       Boolean  @default(false)
+  hasBeenPromptedForSync Boolean  @default(false)
+  isVerified             Boolean  @default(false)
+  website                String?
+  avatarId               String?  @unique
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  primaryLocationId      String?
+  averageRating          Float?
+  totalAverageRating     Float?
+
+  primaryLocation Business?             @relation("Businesslocations", fields: [primaryLocationId], references: [id], onDelete: SetNull)
+  locations       Business[]            @relation("Businesslocations")
+  country         String
+  members         BusinessMember[]
+  collabCampaigns CollabCampaign[]
+  campaignOffers  CampaignOffer[]
+  files           File[]
+  coordinates     Coordinates?
+  socialMedia     BusinessSocialMedia?
+  workingHours    BusinessHours[]
+  services        BusinessService[]
+  avatar          File?                 @relation(name: "business-avatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  amenities       Amenity[]
+  languages       Language[]
+  subscription    BusinessSubscription[]
+  holidays        BusinessHoliday[]
+  packages        BusinessPackage[]
+  clients         BusinessClient[]
+  policy          BusinessPolicy?
+  favorites       User[]
+  reviews         BusinessReview[]
+  reviewReplies   BusinessReviewReply[]
+  createdServices Service[]             @relation(name: "businessToServiceCreatedBy")
+  deletedServices Service[]             @relation(name: "businessToServiceDeletedBy")
+  appointments    Appointment[]
+  EmployeeHours   EmployeeHours[]
+  searchEntries   SearchEntry[]
+  invoices        Invoice[]
+  payoutInfo      BusinessPayoutInfo[]
+  transactions    Transaction[]
+  businessAddOns  BusinessAddOn[]
+
+  @@index([id], name: "business_id_index")
+  @@index([clerkOrganizationId], name: "business_clerk_organization_id_index")
+  @@index([name], name: "business_name_index")
+  @@index([zipcode], name: "business_zipcode_index")
+  @@index([city], name: "business_city_index")
+  @@index([stripeAccountId], name: "business_stripe_account_id_index")
+  @@map("businesses")
+}
+
+model Bank {
+  id                  String               @id @default(uuid())
+  bankName            String
+  bankCode            String               @unique
+  businessPayoutInfos BusinessPayoutInfo[]
+
+  @@index([id], name: "bank_id_index")
+  @@map("banks")
+}
+
+model BusinessPayoutInfo {
+  id              String @id @default(uuid())
+  bankId          String
+  msisdn          String
+  msisdnIv        String
+  cnic            String
+  cnicIv          String
+  accountTitle    String
+  accountNumber   String
+  accountNumberIv String
+  countryCode     String
+  businessId      String @unique
+
+  bank     Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "business_payout_info_id_index")
+  @@map("businessPayoutInfo")
+}
+
+model Transaction {
+  id                String                   @id @default(uuid())
+  amountSent        Float
+  amountReceived    Float                    @default(0)
+  transactionType   TransactionType
+  businessId        String
+  invoiceId         String
+  orderId           String?
+  transactionStatus TransactionStatus        @default(CREATED)
+  paymentStatus     TransactionPaymentStatus @default(UNPAID)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "transaction_id_index")
+  @@map("transactions")
+}
+
+model Invoice {
+  id                    String        @id @default(uuid())
+  appointmentId         String        @unique
+  stripePaymentIntentId String?       @unique
+  businessId            String
+  amountPaid            Float?
+  amountDue             Float
+  tip                   Float?
+  paymentMethod         PaymentMethod
+  paymentStatus         PaymentStatus @default(UNPAID)
+  prePayment            Int           @default(0)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  appointment  Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([id], name: "invoice_id_index")
+  @@index([appointmentId], name: "invoice_appointment_id_index")
+  @@map("invoices")
+}
+
+model BusinessPolicy {
+  id         String   @id @default(uuid())
+  businessId String   @unique
+  policy     String
+  show       Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "business_policy_id_index")
+  @@map("businessPolicies")
+}
+
+model Subscription {
+  id                      String   @id @default(uuid())
+  title                   String   @unique
+  prices                  Json     @default("[]") @db.JsonB
+  country                 String   @default("US")
+  features                Json     @default("[]") @db.JsonB
+  trialPeriodDays         Int?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  businessSubscriptions   BusinessSubscription[]
+
+  @@index([id], name: "subscription_id_index")
+  @@map("subscriptions")
+}
+
+
+
+
+model BusinessSubscription {
+  id                    String             @id @default(uuid())
+  businessId            String             
+  subscriptionId        String
+  customerTransactionId String             @unique
+  startDate             DateTime?
+  endDate               DateTime?
+  billingCycle          BillingCycle
+  status                SubscriptionStatus @default(TRIAL)
+  paymentStatus         PaymentStatus?     @default(UNPAID)
+  isTrialUsed           Boolean?           @default(true)
+  cancelAtPeriodEnd     Boolean?           @default(false)
+  canceledDate          DateTime?
+  orderId               String?            @unique
+  paymentCheck          String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  history      BusinessSubscriptionHistory[]
+
+  @@index([businessId], name: "subscription_business_id_index")
+  @@map("businessSubscription")
+}
+
+model BusinessAddOn {
+  id            String   @id @default(uuid())
+  businessId    String
+  purchaseById  String   
+  type          AddOnType
+  status        AddOnStatus @default(PENDING)
+  transactionId String?   
+  resourceId    String?   
+  price         Float
+  currency      String    @default("INR")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business      Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchaseBy    BusinessMember  @relation(fields: [purchaseById], references: [id], onDelete: Cascade)
+}
+
+model BusinessSubscriptionHistory {
+  id                      String   @id @default(uuid())
+  businessSubscriptionId  String
+  subscriptionId          String   // Stripe subscription id
+  eventType               SubscriptionEventType
+  oldPlanId               String?
+  newPlanId               String?
+  amount                  Int?
+  currency                String?
+  startDate               DateTime?
+  endDate                 DateTime?
+  createdAt               DateTime @default(now())
+
+  businessSubscription    BusinessSubscription @relation(fields: [businessSubscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+}
+
+model BusinessSocialMedia {
+  id        String  @id @default(uuid())
+  instagram String?
+  facebook  String?
+  youtube   String?
+  tiktok    String?
+  twitter   String?
+  snapchat  String?
+
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "business_social_media_id_index")
+  @@map("businessSocialMedia")
+}
+
+model Language {
+  id         String     @id @default(uuid())
+  name       String     @unique
+  businesses Business[]
+
+  @@index([id], name: "language_id_index")
+  @@map("languages")
+}
+
+model Amenity {
+  id         String     @id @default(uuid())
+  name       String     @unique
+  businesses Business[]
+
+  @@index([id], name: "amenities_id_index")
+  @@map("amenities")
+}
+
+model BusinessHours {
+  id            String   @id @default(uuid())
+  businessId    String
+  isClosed      Boolean  @default(false)
+  weekday       String
+  openingHour   Int?
+  openingMinute Int?
+  openingPeriod String?  @db.VarChar(2)
+  closingHour   Int?
+  closingMinute Int?
+  closingPeriod String?  @db.VarChar(2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, weekday])
+  @@index([id], name: "business_hours_id_index")
+  @@map("businessHours")
+}
+
+model BusinessHoliday {
+  id         String   @id @default(uuid())
+  date       DateTime
+  name       String?
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, date])
+  @@index([id], name: "business_holiday_id_index")
+  @@map("businessHolidays")
+}
+
+model BusinessPackage {
+  id              String   @id @default(uuid())
+  title           String
+  businessId      String
+  price           Float?
+  durationMinutes Int?
+  durationHours   Int?
+  totalDuration   Int?
+  imageId         String?  @unique
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  services     BusinessPackageToService[]
+  business     Business                   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  promotion    Promotion?
+  image        File?                      @relation(name: "package-image", fields: [imageId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+
+  @@unique([businessId, title])
+  @@index([id], name: "business_package_service_id_index")
+  @@map("businessPackages")
+}
+
+model BusinessPackageToService {
+  id                String   @id @default(uuid())
+  businessPackageId String
+  businessServiceId String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  businessPackage BusinessPackage @relation(fields: [businessPackageId], references: [id], onDelete: Cascade)
+  businessService BusinessService @relation(fields: [businessServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([businessPackageId, businessServiceId])
+  @@index([id], name: "business_package_to_service_id_index")
+  @@map("businessPackageToServices")
+}
+
+model BusinessService {
+  id              String   @id @default(uuid())
+  businessId      String
+  serviceId       String
+  price           Float
+  durationMinutes Int?
+  durationHours   Int?
+  totalDuration   Int?
+  averageRating   Float?
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  service      Service                           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  business     Business                          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  packages     BusinessPackageToService[]
+  promotion    Promotion?
+  employees    BusinessMemberToBusinessService[]
+  appointments Appointment[]
+  reviews      BusinessReview[]
+
+  @@unique([businessId, serviceId])
+  @@index([id], name: "business_services_id_index")
+  @@map("businessServices")
+}
+
+model BusinessClient {
+  id          String             @id @default(uuid())
+  businessId  String
+  userId      String?
+  fullName    String
+  phoneNumber String
+  email       String
+  dateOfBirth DateTime?
+  houseNumber Int?
+  floor       Int?
+  street      String?
+  sector      String?
+  city        String?
+  area        String?
+  note        String?
+  stylistNote String?
+  type        BusinessClientType
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments    Appointment[]
+  employeeClients EmployeeClient[]
+
+  @@unique([businessId, email, phoneNumber])
+  @@index([id], name: "business_clients_id_index")
+  @@map("businessClients")
+}
+
+model EmployeeClient {
+  id               String   @id @default(uuid())
+  businessMemberId String
+  businessClientId String
+  categoryId       String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  businessMember BusinessMember  @relation(fields: [businessMemberId], references: [id], onDelete: Cascade)
+  businessClient BusinessClient  @relation(fields: [businessClientId], references: [id], onDelete: Cascade)
+  category       ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([businessMemberId, businessClientId, categoryId])
+  @@index([id], name: "employee_clients_id_index")
+  @@map("employeeClients")
+}
+
+model Promotion {
+  id                String   @id @default(uuid())
+  discountType      String
+  discountAmount    Float
+  enabled           Boolean  @default(true)
+  businessServiceId String?  @unique
+  businessPackageId String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  businessService BusinessService? @relation(fields: [businessServiceId], references: [id], onDelete: Cascade)
+  businessPackage BusinessPackage? @relation(fields: [businessPackageId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "promotion_id_index")
+  @@map("promotions")
+}
+
+model Service {
+  id         String  @id @default(uuid())
+  title      String
+  isApproved Boolean @default(false)
+  categoryId String
+
+  category         ServiceCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  businessServices BusinessService[]
+  createdBy        Business[]        @relation(name: "businessToServiceCreatedBy")
+  deletedBy        Business[]        @relation(name: "businessToServiceDeletedBy")
+
+  @@unique([categoryId, title])
+  @@index([id], name: "service_id_index")
+  @@index([title], name: "service_title_index")
+  @@map("services")
+}
+
+model ServiceCategory {
+  id              String           @id @default(uuid())
+  title           String           @unique
+  isApproved      Boolean          @default(false)
+  services        Service[]
+  images          File[]
+  employeeClients EmployeeClient[]
+
+  @@index([id], name: "service_category_id_index")
+  @@index([title], name: "service_category_title_index")
+  @@map("serviceCategories")
+}
+
+model File {
+  id         String   @id @default(uuid())
+  name       String
+  key        String
+  type       String
+  size       Int
+  mimeType   String
+  fullPath   String
+  url        String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  businessId String?
+  categoryId String?
+
+  category       ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  business       Business?        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessAvatar Business?        @relation(name: "business-avatar")
+  userAvatar     User?
+  businessUser   BusinessUser?
+  packageImage   BusinessPackage? @relation(name: "package-image")
+
+  @@unique([businessId, key])
+  @@unique([businessId, categoryId])
+  @@index([id], name: "file_id_index")
+  @@index([type], name: "file_type_index")
+  @@map("files")
+}
+
+model BusinessMemberToBusinessService {
+  id                String   @id @default(uuid())
+  businessMemberId  String
+  businessServiceId String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  businessMember  BusinessMember  @relation(fields: [businessMemberId], references: [id], onDelete: Cascade)
+  businessService BusinessService @relation(fields: [businessServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([businessMemberId, businessServiceId])
+  @@index([id], name: "business_member_to_business_service_id_index")
+  @@map("businessMemberToBusinessServices")
+}
+
+model BusinessMember {
+  id             String   @id @default(uuid())
+  businessUserId String   @unique
+  businessId     String
+  roleId         String
+  role           Role     @relation(fields: [roleId], references: [id])
+  designation    String?
+  onlineBooking  Boolean  @default(false)
+  walkInBooking  Boolean  @default(false)
+  averageRating  Float?
+  about          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  business        Business                          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessUser    BusinessUser                      @relation(fields: [businessUserId], references: [id], onDelete: Cascade)
+  services        BusinessMemberToBusinessService[]
+  reviews         BusinessReview[]
+  appointments    Appointment[]
+  workingHours    EmployeeHours[]
+  employeeClients EmployeeClient[]
+  businessAddOns  BusinessAddOn[]
+
+  @@unique([businessUserId, businessId], name: "business_member_business_user_id_unique_index")
+  @@index([id], name: "business_member_id_index")
+  @@index([businessUserId], name: "business_member_business_user_id_index")
+  @@index([businessId], name: "business_member_business_id_index")
+  @@index([roleId], name: "business_member_role_id_index")
+  @@map("businessMembers")
+}
+
+model EmployeeHours {
+  id               String    @id @default(uuid())
+  isDayOff         Boolean   @default(false)
+  startHour        Int?
+  startMinute      Int?
+  startPeriod      String?
+  endHour          Int?
+  endMinute        Int?
+  endPeriod        String?
+  date             DateTime  @db.Date
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  businessMemberId String
+  businessId       String
+  startShift       DateTime?
+  endShift         DateTime?
+
+  businessMember BusinessMember @relation(fields: [businessMemberId], references: [id], onDelete: Cascade)
+  business       Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessMemberId, date])
+  @@index([id], name: "employee_hours_id_index")
+  @@map("employeeHours")
+}
+
+model Appointment {
+  id                   String            @id @default(uuid())
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  status               AppointmentStatus @default(CREATED)
+  note                 String?
+  employeeId           String?
+  primaryAppointmentId String?
+  businessServiceId    String?
+  businessPackageId    String?
+  clientId             String
+  businessId           String
+  start                DateTime          @db.Timestamptz
+  end                  DateTime          @db.Timestamptz
+  notificationTime     DateTime?         @db.Timestamptz
+  sendReminderEmail    Boolean           @default(false)
+
+  primaryAppointment Appointment?     @relation("AppointmentToPrimaryAppointment", fields: [primaryAppointmentId], references: [id], onDelete: SetNull)
+  appointments       Appointment[]    @relation("AppointmentToPrimaryAppointment")
+  businessService    BusinessService? @relation(fields: [businessServiceId], references: [id])
+  businessPackage    BusinessPackage? @relation(fields: [businessPackageId], references: [id])
+  employee           BusinessMember?  @relation(fields: [employeeId], references: [id])
+  business           Business         @relation(fields: [businessId], references: [id])
+  client             BusinessClient   @relation(fields: [clientId], references: [id])
+  invoice            Invoice?
+
+  @@index([id], name: "appointment_id_index")
+  @@map("appointments")
+}
+
+model CollabCampaign {
+  id         String          @id @default(uuid())
+  name       String
+  businessId String
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  business   Business        @relation(fields: [businessId], references: [id])
+  offers     CampaignOffer[]
+
+  @@index([id], name: "collab_campaign_id_index")
+  @@map("collabCampaigns")
+}
+
+model CampaignOffer {
+  id           String              @id @default(uuid())
+  influencerId String
+  businessId   String
+  campaignId   String
+  status       CampaignOfferStatus @default(PENDING)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  influencer Influencer     @relation(fields: [influencerId], references: [id])
+  business   Business       @relation(fields: [businessId], references: [id])
+  campaign   CollabCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([influencerId, campaignId], name: "campaign_offer_influencer_id_campaign_id_unique_index")
+  @@index([id], name: "campaign_offer_id_index")
+  @@map("campaignOffers")
+}
+
+model Influencer {
+  id               String          @id @default(uuid())
+  name             String
+  email            String          @unique
+  username         String          @unique
+  phoneNumber      String?         @unique
+  password         String?
+  isEmailConfirmed Boolean         @default(false)
+  twoFactorEnabled Boolean         @default(false)
+  twoFactorSecret  String?
+  twoFactorType    TwoFactorType?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  campaignOffers   CampaignOffer[]
+  refreshTokens    RefreshToken[]
+
+  @@index([id], name: "influencer_id_index")
+  @@index([email], name: "influencer_email_index")
+  @@index([username], name: "influencer_username_index")
+  @@map("influencers")
+}
+
+model User {
+  id                  String                @id @default(uuid())
+  firstName           String?
+  lastName            String?
+  dateOfBirth         DateTime?             @db.Date
+  gender              String?
+  email               String                @unique
+  username            String?               @unique
+  phoneNumber         String?               @unique
+  avatarId            String?               @unique
+  profilePicture      String?
+  password            String?
+  googleId            String?
+  facebookId          String?
+  isAgreementAccepted Boolean               @default(false)
+  isEmailConfirmed    Boolean               @default(false)
+  isPhoneConfirmed    Boolean               @default(false)
+  twoFactorEnabled    Boolean               @default(false)
+  onboardingCompleted Boolean               @default(false)
+  hasAcceptedPolicy   Boolean               @default(false)
+  twoFactorType       TwoFactorType?
+  twoFactorSecret     String?
+  // Ban/deactivation flags
+  isBanned            Boolean               @default(false)
+  banDate             DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  favorites           Business[]
+  interests           Interest[]
+  refreshTokens       RefreshToken[]
+  reviews             BusinessReview[]
+  reviewReplies       BusinessReviewReply[]
+  userSettings        UserSettings?
+  businessClients     BusinessClient[]
+  avatar              File?                 @relation(fields: [avatarId], references: [id], onDelete: SetNull)
+  searches            SearchEntry[]
+  clerkUserId         String                @unique
+
+  @@index([id], name: "user_id_index")
+  @@index([email], name: "user_email_index")
+  @@index([username], name: "user_username_index")
+  @@map("users")
+}
+
+model UserSettings {
+  id                               String  @id @default(uuid())
+  userId                           String
+  generalNotification              Boolean @default(false)
+  soundNotification                Boolean @default(true)
+  vibrateNotification              Boolean @default(false)
+  specialOffersNotification        Boolean @default(false)
+  promoDiscountsNotification       Boolean @default(true)
+  paymentsNotification             Boolean @default(true)
+  appUpdatesNotification           Boolean @default(false)
+  newServiceAvailableNotification  Boolean @default(true)
+  appointmentRemindersNotification Boolean @default(true)
+
+  locationPermission                  Boolean @default(false)
+  galleryPermission                   Boolean @default(false)
+  cameraPermission                    Boolean @default(false)
+  syncContactsPermission              Boolean @default(false)
+  notificationsOnLockScreenPermission Boolean @default(false)
+
+  pushNotificationForAppointments  Boolean @default(true)
+  emailNotificationForAppointments Boolean @default(false)
+  textNotificationForAppointments  Boolean @default(false)
+
+  reviewVisibleToOtherUsers Boolean @default(true)
+  anonymousModeForReviews   Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@index([id], name: "user_settings_id_index")
+  @@map("userSettings")
+}
+
+model SearchEntry {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@index([id], name: "search_history_id_index")
+  @@map("searchEntries")
+}
+
+model BusinessReview {
+  id                String   @id @default(uuid())
+  ratings           Float
+  review            String
+  userId            String
+  businessId        String?
+  businessMemberId  String?
+  businessServiceId String?
+  isRead            Boolean? @default(false)
+  isPublic          Boolean? @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business            Business?             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessMember      BusinessMember?       @relation(fields: [businessMemberId], references: [id], onDelete: Cascade)
+  businessService     BusinessService?      @relation(fields: [businessServiceId], references: [id], onDelete: Cascade)
+  businessReviewReply BusinessReviewReply[]
+
+  @@unique([userId, businessId])
+  @@unique([userId, businessMemberId])
+  @@unique([userId, businessServiceId])
+  @@index([id], name: "business_review_id_index")
+  @@index([businessMemberId], name: "business_review_business_member_id_index")
+  @@map("businessReviews")
+}
+
+model BusinessReviewReply {
+  id        String   @id @default(uuid())
+  reply     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  review     BusinessReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reviewId   String
+  user       User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String?
+  business   Business?      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String?
+
+  @@index([id], name: "business_review_reply_id_index")
+  @@index([businessId], name: "business_review_reply_business_id_index")
+  @@index([reviewId], name: "business_review_reply_review_id_index")
+  @@index([userId], name: "business_review_reply_user_id_index")
+  @@map("businessReviewReplies")
+}
+
+model Interest {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  industryTypes String[]
+  categories    String[]
+  isApproved    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  users         User[]
+
+  @@index([id], name: "interest_id_index")
+  @@map("interests")
+}
+
+model ContactUsEntry {
+  id          String   @id @default(uuid())
+  firstName   String
+  lastName    String?
+  email       String
+  phoneNumber String?
+  message     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([id], name: "contact_us_entry_id_index")
+  @@map("contactUsEntries")
+}
+
+model Coordinates {
+  id         String                                @id @default(uuid())
+  latitude   Float
+  longitude  Float
+  coordinate Unsupported("geometry(Point, 4326)")?
+  timezone   String?
+  businessId String                                @unique
+  business   Business                              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([id], name: "coordinates_id_index")
+  @@index([coordinate], type: Gist)
+  @@map("coordinates")
+}
+
+model Invitations {
+  id                      String           @id @default(uuid())
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  email                   String           @unique
+  code                    String
+  businessUserType        BusinessUserType @default(REGULAR)
+  invitedByBusinessUserId String
+  businessUser            BusinessUser     @relation("businessUserToInvitations", fields: [invitedByBusinessUserId], references: [id], onDelete: Cascade)
+  status                  InvitationStatus
+
+  @@index([email])
+  @@index([businessUserType])
+  @@map("invitations")
+}
+
+model Reward {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  businessUserId   String
+  referredByBusinessUserId String?
+  rewardType       RewardType
+  status           RewardStatus
+  amount           Float
+
+  businessUser     BusinessUser  @relation("businessUserToReward", fields: [businessUserId], references: [id], onDelete: Cascade)
+  referredByUser   BusinessUser? @relation("referredByBusinessUserToReward", fields: [referredByBusinessUserId], references: [id], onDelete: Cascade)
+  
+  @@index([referredByBusinessUserId], name: "referred_by_business_user_id")
+  @@index([businessUserId], name: "recieved_by_business_user_id")
+  @@map("rewards")
+}
+
+model BusinessUserSettings {
+  id                               String  @id @default(uuid())
+  businessUserId                           String
+  appointmentNotification                  Boolean @default(false)
+  businessUser BusinessUser @relation(fields: [businessUserId], references: [id], onDelete: Cascade)
+  @@unique([businessUserId])
+  @@index([id], name: "business_user_settings_id_index")
+  @@map("businessUserSettings")
+}
+
+enum RewardType {
+  DISCOUNT
+  TRIAL_DAYS
+}
+
+enum RewardStatus {
+  PENDING
+  APPLIED
+  EXPIRED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum Roles {
+  OWNER
+  EMPLOYEE
+  ADMIN
+  USER
+}
+
+enum AppointmentStatus {
+  CREATED
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum CampaignOfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COUNTERED
+}
+
+enum BusinessCountry {
+  PK
+  US
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  TRIAL
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  ONLINE
+}
+
+enum PaymentStatus {
+  PAID
+  PREPAID
+  UNPAID
+  FAILED
+  REFUNDED
+}
+
+enum TwoFactorType {
+  EMAIL
+  SMS
+  GOOGLE_AUTH
+}
+
+enum BusinessClientType {
+  CUSTOMER
+  CLIENT
+}
+
+enum TransactionType {
+  PAY_IN
+  PAY_OUT
+}
+
+enum TransactionStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+enum TransactionPaymentStatus {
+  PAID_OUT
+  REFUNDED
+  UNPAID
+  PAID
+}
+
+enum BillingCycle {
+  YEAR
+  MONTH
+}
+
+enum AddOnType {
+  EMPLOYEE
+  LOCATION
+}
+
+enum AddOnStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum BusinessUserType {
+  PILOT
+  REGULAR
+  REFERRAL
+}
+
+enum SubscriptionEventType {
+  CREATED
+  UPGRADED
+  DOWNGRADED
+  RENEWED
+  CANCELLED
+}

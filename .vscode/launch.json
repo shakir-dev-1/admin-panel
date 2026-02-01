@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug NestJS (Backend)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:debug"],
+      "restart": true,
+      "protocol": "inspector",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug Next.js (Frontend)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "restart": true,
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug All (Full Stack)",
+      "configurations": ["Debug NestJS (Backend)", "Debug Next.js (Frontend)"]
+    }
+  ]
+}

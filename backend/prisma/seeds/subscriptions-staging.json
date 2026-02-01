@@ -1,0 +1,256 @@
+[
+  {
+    "id": "80185f16-c1ae-4c77-af13-8ac00500eec1",
+    "title": "Starter",
+    "prices": {
+      "monthly": {
+        "stripePriceId": "price_1S1SdeRrRU22NSBRWmoIbSHP",
+        "amount": 49.99,
+        "currency": "usd",
+        "interval": "month"
+      },
+      "yearly": {
+        "stripePriceId": "price_1S1SeQRrRU22NSBREUq8XJxd",
+        "amount": 499.0,
+        "currency": "usd",
+        "interval": "year"
+      }
+    },
+    "country": "US",
+    "features": {
+      "description": [
+        "1 Calendar (owner only)",
+        "1 Location",
+        "Basic Employee Management",
+        "Online Booking",
+        "Standard Reminders",
+        "3 Influencer Collaborations/month",
+        "500 Marketing Messages",
+        "Basic Analytics",
+        "Payments (Stripe + cash)",
+        "Email Support (48h response)"
+      ],
+      "limits": {
+        "locations": 1,
+        "employees": 1
+      },
+      "capabilities": {
+        "reporting": "basic",
+        "analytics": false,
+        "accountManager": false
+      },
+      "support": {
+        "type": "email",
+        "priority": false
+      }
+    },
+    "trialPeriodDays": 30
+  },
+  {
+    "id": "0d9d9d8b-03e9-4b57-a981-7514f9b4bd47",
+    "title": "Growth",
+    "prices": {
+      "monthly": {
+        "stripePriceId": "price_1S1SfBRrRU22NSBRzqzG8lJi",
+        "amount": 89.99,
+        "currency": "usd",
+        "interval": "month",
+        "addons": {
+          "user": {
+            "initialStripePriceId": "price_1S1SkTRrRU22NSBRBxii5ULh",
+            "stripePriceId": "price_1SA8RGRrRU22NSBRKKUAvQJ7",
+            "amount": 10.0,
+            "currency": "usd",
+            "description": "Add extra team members to your account. Each additional user gets full access to your subscription features."
+          },
+          "location": {
+            "initialStripePriceId": "price_1S1SkyRrRU22NSBRBIBihXyU",
+            "stripePriceId": "price_1SA8SARrRU22NSBRc15yN5xT",
+            "amount": 25.0,
+            "currency": "usd",
+            "description": "Expand your business by managing multiple locations under one subscription. Each additional location includes full reporting and management tools."
+          }
+        }
+      },
+      "yearly": {
+        "stripePriceId": "price_1S1SfYRrRU22NSBRH3OAfapE",
+        "amount": 899.0,
+        "currency": "usd",
+        "interval": "year",
+        "addons": {
+          "user": {
+            "initialStripePriceId": "price_1S1SkTRrRU22NSBRBxii5ULh",
+            "stripePriceId": "price_1SA85jRrRU22NSBRGLSwJ0GB",
+            "amount": 10.0,
+            "currency": "usd",
+            "description": "Add extra team members to your account. Each additional user gets full access to your subscription features."
+          },
+          "location": {
+            "initialStripePriceId": "price_1S1SkyRrRU22NSBRBIBihXyU",
+            "stripePriceId": "price_1SA86oRrRU22NSBRzSwjvZyf",
+            "amount": 25.0,
+            "currency": "usd",
+            "description": "Expand your business by managing multiple locations under one subscription. Each additional location includes full reporting and management tools."
+          }
+        }
+      }
+    },
+    "country": "US",
+    "features": {
+      "description": [
+        "5 Calendars",
+        "3 Locations",
+        "Employee Management (up to 5)",
+        "Online Booking",
+        "Standard Reminders",
+        "5 Influencer Collaborations/month",
+        "1,000 Marketing Messages",
+        "Standard Analytics",
+        "Payments (Stripe + cash)",
+        "Priority Email Support"
+      ],
+      "limits": {
+        "locations": 3,
+        "employees": 5
+      },
+      "capabilities": {
+        "reporting": "advanced",
+        "analytics": true,
+        "accountManager": false
+      },
+      "support": {
+        "type": "priority_email",
+        "priority": true
+      }
+    },
+    "trialPeriodDays": 30
+  },
+  {
+    "id": "3af7b62e-4a88-458a-aab7-2aee3bd4a336",
+    "title": "Pro",
+    "prices": {
+      "monthly": {
+        "amount": 299.99,
+        "currency": "usd",
+        "interval": "month",
+        "stripePriceId": "price_1S1ShORrRU22NSBRfYGfunnH",
+        "addons": {
+          "user": {
+            "initialStripePriceId": "price_1S1Sm6RrRU22NSBRHXlNgXrp",
+            "stripePriceId": "price_1SA8TWRrRU22NSBRbXSqbqas",
+            "amount": 5.0,
+            "currency": "usd",
+            "description": "Add extra team members to your account. Each additional user gets full access to your subscription features."
+          },
+          "location": {
+            "initialStripePriceId": "price_1S1SmeRrRU22NSBRE7dkxLk5",
+            "stripePriceId": "price_1SA8VERrRU22NSBRFY9ww9gQ",
+            "amount": 20.0,
+            "currency": "usd",
+            "description": "Expand your business by managing multiple locations under one subscription. Each additional location includes full reporting and management tools."
+          }
+        }
+      },
+      "yearly": {
+        "amount": 2999,
+        "currency": "usd",
+        "interval": "year",
+        "stripePriceId": "price_1S1Si4RrRU22NSBRn4qrGyYX",
+        "addons": {
+          "user": {
+            "initialStripePriceId": "price_1S1Sm6RrRU22NSBRHXlNgXrp",
+            "stripePriceId": "price_1SA889RrRU22NSBRzr1S3bkC",
+            "amount": 5.0,
+            "currency": "usd",
+            "description": "Add extra team members to your account. Each additional user gets full access to your subscription features."
+          },
+          "location": {
+            "initialStripePriceId": "price_1S1SmeRrRU22NSBRE7dkxLk5",
+            "stripePriceId": "price_1SA89GRrRU22NSBREMScFLKC",
+            "amount": 20.0,
+            "currency": "usd",
+            "description": "Expand your business by managing multiple locations under one subscription. Each additional location includes full reporting and management tools."
+          }
+        }
+      }
+    },
+    "country": "US",
+    "features": {
+      "description": [
+        "Unlimited Calendars",
+        "5 Locations",
+        "15 Employees Included",
+        "Online Booking",
+        "Advanced Reminders (coming soon)",
+        "Unlimited Influencer Collaborations",
+        "Unlimited Marketing Messages",
+        "Advanced Analytics",
+        "Payments (Stripe + cash)",
+        "Premium Data Import",
+        "24/7 Chat, Phone, Email Support"
+      ],
+      "limits": {
+        "locations": 5,
+        "employees": 15
+      },
+      "capabilities": {
+        "reporting": "full",
+        "analytics": true,
+        "accountManager": true
+      },
+      "support": {
+        "type": "premium_24_7",
+        "priority": true
+      }
+    },
+    "trialPeriodDays": 30
+  },
+  {
+    "id": "b5f2a3c1-6e0a-4f37-8b91-3e72a0b5eaf7",
+    "title": "Lifetime",
+    "prices": {
+      "monthly": {
+        "stripePriceId": "price_1S1SiqRrRU22NSBRIrfpyO29",
+        "amount": 0.0,
+        "currency": "usd",
+        "interval": "month"
+      },
+      "yearly": {
+        "stripePriceId": "price_1S1SiqRrRU22NSBRIrfpyO29",
+        "amount": 0.0,
+        "currency": "usd",
+        "interval": "year"
+      }
+    },
+    "country": "US",
+    "features": {
+      "description": [
+        "Unlimited Calendars",
+        "5 Locations",
+        "15 Employees (unlimited booking points)",
+        "Online Booking",
+        "Advanced Reminders + booking points",
+        "Unlimited Influencer Collaborations",
+        "Unlimited Marketing Messages",
+        "Advanced Analytics",
+        "Payments (Stripe + refunds)",
+        "Premium Data Report",
+        "24/7 Chat, Phone, Email Support"
+      ],
+      "limits": {
+        "locations": -1,
+        "employees": -1
+      },
+      "capabilities": {
+        "reporting": "full",
+        "analytics": true,
+        "accountManager": true
+      },
+      "support": {
+        "type": "premium_24_7",
+        "priority": true
+      }
+    },
+    "trialPeriodDays": null
+  }
+]

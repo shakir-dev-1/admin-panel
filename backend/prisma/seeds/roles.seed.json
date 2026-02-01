@@ -1,0 +1,18 @@
+[
+    {
+        "name": "ADMIN",
+        "description": "Full access to manage business, employees, and settings"
+    },
+    {
+        "name": "OWNER",
+        "description": "Full access to manage business, employees, and settings"
+    },
+    {
+        "name": "EMPLOYEE",
+        "description": "Access to assigned tasks, schedules, and limited management features"
+    },
+    {
+        "name": "USER",
+        "description": "General user with access to their own account and services"
+    }
+]

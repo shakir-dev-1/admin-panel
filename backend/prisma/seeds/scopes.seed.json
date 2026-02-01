@@ -1,0 +1,586 @@
+[
+    {
+        "name": "business:read",
+        "description": "Read business details",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business:update",
+        "description": "Update business details",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business:create",
+        "description": "Create a new business",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_files:read",
+        "description": "Read business files",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_files:create",
+        "description": "Upload business files",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_files:delete",
+        "description": "Delete business files",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_services:read",
+        "description": "Read business services",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_services:create",
+        "description": "Create business services",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_services:delete",
+        "description": "Delete business services",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_categories:read",
+        "description": "Read business categories",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_categories:update",
+        "description": "Update business categories",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_locations:read",
+        "description": "Read business locations",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_locations:create",
+        "description": "Create business locations",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_locations:delete",
+        "description": "Delete business locations",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_packages:read",
+        "description": "Read business packages",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_packages:create",
+        "description": "Create business packages",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_packages:update",
+        "description": "Update business packages",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_packages:delete",
+        "description": "Delete business packages",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_payout:create",
+        "description": "Create business payout",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_holidays:create",
+        "description": "Add business holidays",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_holidays:delete",
+        "description": "Delete business holidays",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_hours:create",
+        "description": "Set business hours",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_hours:delete",
+        "description": "Delete business hours",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_features:update",
+        "description": "Update business features",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_pre_payments:update",
+        "description": "Update business payment methods",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_social:update",
+        "description": "Update business social links",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_policy:update",
+        "description": "Update business policy",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_ratings:read",
+        "description": "Read business ratings",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_reviews:read",
+        "description": "Read business reviews",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_reviews:create",
+        "description": "Create business review",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_reviews:update",
+        "description": "Update business review",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_appointments:read",
+        "description": "Read business appointments",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_appointments:create",
+        "description": "Create business appointment",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_appointments:update",
+        "description": "Update business appointment",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_appointments:delete",
+        "description": "Delete business appointment",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_payments:create",
+        "description": "Create business payment",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_invoices:create",
+        "description": "Create business invoice",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_invoices:read",
+        "description": "Read business invoices",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_invoices:delete",
+        "description": "Delete business invoice",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_clients:read",
+        "description": "Read business clients",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_clients:create",
+        "description": "Create business client",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_clients:update",
+        "description": "Update business client",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_clients:delete",
+        "description": "Delete business client",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_clients_statistics:read",
+        "description": "Read business client statistic",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_subscription:read",
+        "description": "Read business subscription",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_subscription:create",
+        "description": "Create business subscription",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_subscription:update",
+        "description": "Create business subscription",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_subscription:delete",
+        "description": "Delete business subscription",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_analytics:read",
+        "description": "Read business analytics",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_employees:read",
+        "description": "Read all business employees",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_employees_walk_in:read",
+        "description": "Read business employee walk in",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee:create",
+        "description": "Create business employees",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_employee:read",
+        "description": "Read business employees",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee:update",
+        "description": "Update business employee",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee:delete",
+        "description": "Delete business employee",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_employee_password:update",
+        "description": "Update business employee password",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee_avatar:update",
+        "description": "Update business employee avatar",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee_avatar:delete",
+        "description": "Delete business employee avatar",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_employee_services:update",
+        "description": "Update business employee services",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee_working_hours:read",
+        "description": "Read business employee working hours",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_employee_working_hours:update",
+        "description": "Update business employee working hours",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_user:read",
+        "description": "Read business user",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_user:update",
+        "description": "Update business user",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_user:delete",
+        "description": "Delete business user",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+        {
+        "name": "business_invitation:create",
+        "description": "Invite business user",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+            {
+        "name": "business_invitation:read",
+        "description": "Read business invitations",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "payments:create",
+        "description": "Create payment",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "payments:read",
+        "description": "Read payment",
+        "roles": [
+            "admin",
+            "owner"
+        ]
+    },
+    {
+        "name": "business_user_auth:read",
+        "description": "Read business user authentication",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    },
+    {
+        "name": "business_user_auth:create",
+        "description": "Create business user authentication",
+        "roles": [
+            "admin",
+            "owner",
+            "employee"
+        ]
+    }
+]

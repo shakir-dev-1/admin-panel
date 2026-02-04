@@ -1,5 +1,5 @@
 import { IsEmail, IsPhoneNumber, IsEnum } from 'class-validator';
-import { AccountStatus } from '../../generated/prisma/enums.js';
+// import { AccountStatus } from '../../generated/prisma/enums.js';
 
 export class ChangeEmailDto {
   @IsEmail()
@@ -11,7 +11,7 @@ export class ChangePhoneDto {
   phone: string;
 }
 
-export class ChangeStatusDto {
-  @IsEnum(AccountStatus)
-  status: AccountStatus;
-}
+// export class ChangeStatusDto {
+//   @IsEnum(AccountStatus)
+//   status: AccountStatus;
+// }

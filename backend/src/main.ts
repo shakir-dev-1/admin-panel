@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-import { AuditInterceptor } from './audit/audit.interceptor.js';
+// import { AuditInterceptor } from './audit/audit.interceptor.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
@@ -28,8 +28,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Interceptors should usually come AFTER CORS/Prefix setup
-  const auditInterceptor = app.get(AuditInterceptor);
-  app.useGlobalInterceptors(auditInterceptor);
+  // const auditInterceptor = app.get(AuditInterceptor);
+  // app.useGlobalInterceptors(auditInterceptor);
 
   await app.listen(process.env.PORT ?? 3001);
 }

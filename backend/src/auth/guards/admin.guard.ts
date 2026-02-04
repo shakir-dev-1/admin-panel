@@ -1,25 +1,50 @@
-// auth/guards/admin.guard.ts
-import { Injectable, CanActivate, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ExecutionContext,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Reflector } from '@nestjs/core'; // 1. Import Reflector
+
+interface AdminUser {
+  adminId: string;
+  email: string;
+}
 
 @Injectable()
 export class AdminGuard extends AuthGuard('admin-jwt') {
   private readonly logger = new Logger(AdminGuard.name);
 
+  constructor(private reflector: Reflector) {
+    // 2. Inject Reflector
+    super();
+  }
+
   canActivate(context: ExecutionContext) {
-    this.logger.debug('AdminGuard invoked');
+    // 3. Check if the route is marked as public
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) return true;
+
     return super.canActivate(context);
   }
 
-  handleRequest(err: any, user: any, info: any) {
-    this.logger.debug(`AdminGuard handleRequest - user: ${JSON.stringify(user)}, error: ${err}, info: ${info}`);
-    
+  // 4. Fix ESLint by typing the parameters
+  handleRequest<TUser = AdminUser>(
+    err: Error | null,
+    user: TUser | null,
+  ): TUser {
     if (err || !user) {
-      this.logger.error(`AdminGuard blocked request: ${err?.message || 'No user'}`);
+      this.logger.error(
+        `AdminGuard blocked request: ${err instanceof Error ? err.message : 'No user'}`,
+      );
       throw err || new UnauthorizedException();
     }
-    
-    this.logger.debug(`AdminGuard passed for admin: ${user.adminId}`);
+
     return user;
   }
 }

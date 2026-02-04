@@ -4,13 +4,13 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config'; // Fixed Import
 import { AppController } from './app.controller.js';
 import { AuthModule } from './auth/auth.module.js';
-import { MetricsModule } from './admin/metrics/metrics.module.js';
+// import { MetricsModule } from './admin/metrics/metrics.module.js';
 import { AdminModule } from './admin/admin.module.js';
-import { AuditModule } from './audit/audit.module.js';
-import { PrismaService } from './prisma/prisma.service.js';
 import { AdminService } from './admin/admin.service.js';
-import { TestModule } from './test/test.module.js';
-import { StripeModule } from './stripe/stripe.module.js';
+// import { AuditModule } from './audit/audit.module.js';
+import { PrismaService } from './prisma/prisma.service.js';
+// import { TestModule } from './test/test.module.js';
+// import { StripeModule } from './stripe/stripe.module.js';
 
 @Module({
   imports: [
@@ -28,20 +28,20 @@ import { StripeModule } from './stripe/stripe.module.js';
         },
       ],
     }),
-    
-    StripeModule,
+
+    // StripeModule,
     AuthModule,
-    MetricsModule,
+    // MetricsModule,
     AdminModule,
-    AuditModule,    
-    TestModule,
+    // AuditModule,
+    // TestModule,
   ],
   controllers: [AppController],
   providers: [
-    PrismaService, 
-    AdminService, 
+    PrismaService,
+    AdminService,
     {
-      provide: APP_GUARD,    
+      provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
   ],

@@ -1,0 +1,3 @@
+=== Test Results Summary ===
+{"message":"Admin authenticated","adminId":"9eb7446a-6b59-4d0f-9565-40370e2ebd87"}
+

@@ -1,38 +1,43 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+// src/admin/admin.service.ts
 import {
-  Inject,
   Injectable,
+  BadRequestException,
   NotFoundException,
   Logger,
-  BadRequestException,
 } from '@nestjs/common';
-// import Stripe from 'stripe';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import {
   Prisma,
+  Admin,
   BusinessUserType,
   TwoFactorType,
   Roles,
   InvitationStatus,
   RewardType,
   RewardStatus,
-} from '../../generated/prisma/client.js';
-// import { jest } from '@jest/globals'; // Add this if you use jest.fn() inside the service itself
+} from '../generated/prisma/client.js';
+// import { AdminUserSearchDto } from './dto/admin-user-search.dto.js';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 
-export type BusinessUserSortField =
-  | 'email'
-  | 'createdAt'
-  | 'updatedAt'
+export type UserSortField =
   | 'firstName'
   | 'lastName'
-  | undefined;
-
+  | 'email'
+  | 'username'
+  | 'createdAt'
+  | 'updatedAt';
+export type BusinessUserSortField =
+  | 'email'
+  | 'username'
+  | 'fullName'
+  | 'createdAt'
+  | 'updatedAt';
 export type SortOrder = 'asc' | 'desc';
 
 // Add this interface near other interfaces
-export interface BusinessUserListResult {
+interface BusinessUserListResult {
   id: string;
   email: string;
   username: string | null;
@@ -56,7 +61,7 @@ export interface BusinessUserListResult {
   totalBusinesses: number;
 }
 
-export interface BusinessUserFilterParams {
+interface BusinessUserFilterParams {
   page?: number;
   limit?: number;
   search?: string;
@@ -69,7 +74,7 @@ export interface BusinessUserFilterParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface BusinessUserDetailResult {
+interface BusinessUserDetailResult {
   id: string;
   email: string;
   username: string | null;
@@ -148,7 +153,7 @@ export interface BusinessUserDetailResult {
   } | null;
 }
 
-export interface PaginatedResult<T> {
+interface PaginatedResult<T> {
   data: T[];
   pagination: {
     page: number;
@@ -158,14 +163,378 @@ export interface PaginatedResult<T> {
   };
 }
 
-@Injectable()
-export class BusinessService {
-  private readonly logger = new Logger(BusinessService.name);
+// Define these based on your needs if not already imported
+// type UserSortField = keyof Prisma.UserOrderByWithRelationInput;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    // @Inject('STRIPE_CLIENT') private readonly stripe: Stripe,
-  ) {}
+@Injectable()
+export class AdminService {
+  private readonly logger = new Logger(AdminService.name); // Add this line
+
+  constructor(private prisma: PrismaService) {}
+
+  // Admin CRUD operations
+  async admin(
+    adminWhereUniqueInput: Prisma.AdminWhereUniqueInput,
+  ): Promise<Admin | null> {
+    return this.prisma.admin.findUnique({
+      where: adminWhereUniqueInput,
+    });
+  }
+
+  async admins(params: {
+    skip?: number;
+    take?: number;
+    cursor?: Prisma.AdminWhereUniqueInput;
+    where?: Prisma.AdminWhereInput;
+    orderBy?: Prisma.AdminOrderByWithRelationInput;
+  }): Promise<Admin[]> {
+    const { skip, take, cursor, where, orderBy } = params;
+    return this.prisma.admin.findMany({
+      skip,
+      take,
+      cursor,
+      where,
+      orderBy,
+    });
+  }
+
+  async createAdmin(data: Prisma.AdminCreateInput): Promise<Admin> {
+    // Hash password before creating admin
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    return this.prisma.admin.create({
+      data: {
+        ...data,
+        password: hashedPassword,
+      },
+    });
+  }
+
+  async updateAdmin(params: {
+    where: Prisma.AdminWhereUniqueInput;
+    data: Prisma.AdminUpdateInput;
+  }): Promise<Admin> {
+    const { where, data } = params;
+
+    // Hash password if it's being updated
+    if (data.password) {
+      data.password = await bcrypt.hash(data.password as string, 10);
+    }
+
+    return this.prisma.admin.update({
+      data,
+      where,
+    });
+  }
+
+  async deleteAdmin(where: Prisma.AdminWhereUniqueInput): Promise<Admin> {
+    return this.prisma.admin.delete({
+      where,
+    });
+  }
+
+  // Audit logging
+  async logAudit(
+    adminId: string,
+    actionType: string,
+    targetUserId?: string,
+    metadata?: Prisma.InputJsonValue,
+  ) {
+    return this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        actionType,
+        targetUserId,
+        metadata,
+      },
+    });
+  }
+
+  // Get recent regular users
+  async getRecentUsers(limit = 5) {
+    const users = await this.prisma.user.findMany({
+      take: limit,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        username: true,
+        phoneNumber: true,
+        isBanned: true,
+        banDate: true,
+        createdAt: true,
+        updatedAt: true,
+        // Get the first business they're associated with (if any)
+        businessClients: {
+          take: 1,
+          select: {
+            business: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+      email: user.email,
+      username: user.username,
+      phoneNumber: user.phoneNumber,
+      status: user.isBanned ? 'BANNED' : 'ACTIVE',
+      banDate: user.banDate,
+      lastLoginAt: user.updatedAt, // Using updatedAt as proxy for last activity
+      businessName: user.businessClients[0]?.business?.name || null,
+      createdAt: user.createdAt,
+    }));
+  }
+
+  // Get recent business users
+  async getRecentBusinessUsers(limit = 5) {
+    const businessUsers = await this.prisma.businessUser.findMany({
+      take: limit,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        phoneNumber: true,
+        businessUserType: true,
+        isEmailConfirmed: true,
+        isAgreementAccepted: true,
+        createdAt: true,
+        updatedAt: true,
+        businesses: {
+          take: 1,
+          select: {
+            business: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return businessUsers.map((user) => ({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      fullName: user.fullName,
+      phoneNumber: user.phoneNumber,
+      userType: user.businessUserType,
+      status: user.isEmailConfirmed ? 'ACTIVE' : 'PENDING_VERIFICATION',
+      businessName: user.businesses[0]?.business?.name || null,
+      createdAt: user.createdAt,
+      lastActivity: user.updatedAt,
+    }));
+  }
+
+  // Get all regular users
+  async getAllUsers() {
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        username: true,
+        phoneNumber: true,
+        isBanned: true,
+        banDate: true,
+        createdAt: true,
+        updatedAt: true,
+        businessClients: {
+          take: 1,
+          select: {
+            business: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+      email: user.email,
+      username: user.username,
+      phoneNumber: user.phoneNumber,
+      status: user.isBanned ? 'BANNED' : 'ACTIVE',
+      banDate: user.banDate,
+      lastLoginAt: user.updatedAt,
+      createdAt: user.createdAt,
+      businessName: user.businessClients[0]?.business?.name || null,
+    }));
+  }
+
+  // Get regular users with pagination and filters
+  async getUsers(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: 'ACTIVE' | 'BANNED';
+    sortBy?: UserSortField;
+    sortOrder?: SortOrder;
+  }) {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = params;
+
+    const skip = (page - 1) * limit;
+
+    // 1. Properly typed where clause
+    const where: Prisma.UserWhereInput = {};
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { username: { contains: search, mode: 'insensitive' } },
+        { phoneNumber: { contains: search } },
+        {
+          businessClients: {
+            some: {
+              business: {
+                name: { contains: search, mode: 'insensitive' },
+              },
+            },
+          },
+        },
+      ];
+    }
+
+    if (status === 'BANNED') {
+      where.isBanned = true;
+    } else if (status === 'ACTIVE') {
+      where.isBanned = false;
+    }
+
+    // 2. Fix the 'any' problem here
+    // We use the specific OrderBy input type from Prisma
+    const orderBy: Prisma.UserOrderByWithRelationInput = {
+      [sortBy]: sortOrder,
+    };
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          username: true,
+          phoneNumber: true,
+          isBanned: true,
+          banDate: true,
+          createdAt: true,
+          updatedAt: true,
+          businessClients: {
+            take: 1,
+            select: {
+              business: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users.map((user) => ({
+        id: user.id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+        email: user.email,
+        username: user.username,
+        phoneNumber: user.phoneNumber,
+        status: user.isBanned ? ('BANNED' as const) : ('ACTIVE' as const),
+        banDate: user.banDate,
+        lastLoginAt: user.updatedAt,
+        createdAt: user.createdAt,
+        businessName: user.businessClients[0]?.business?.name || null,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Get all business users
+  async getAllBusinessUsers() {
+    const businessUsers = await this.prisma.businessUser.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        phoneNumber: true,
+        businessUserType: true,
+        isEmailConfirmed: true,
+        isAgreementAccepted: true,
+        createdAt: true,
+        updatedAt: true,
+        businesses: {
+          select: {
+            business: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return businessUsers.map((user) => ({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      fullName: user.fullName,
+      phoneNumber: user.phoneNumber,
+      userType: user.businessUserType,
+      status: user.isEmailConfirmed ? 'ACTIVE' : 'PENDING_VERIFICATION',
+      agreementAccepted: user.isAgreementAccepted,
+      businesses: user.businesses.map((b) => ({
+        id: b.business.id,
+        name: b.business.name,
+      })),
+      createdAt: user.createdAt,
+      lastActivity: user.updatedAt,
+    }));
+  }
 
   /**
    * Get business users with filtering and pagination
@@ -315,97 +684,6 @@ export class BusinessService {
       );
       throw error;
     }
-  }
-
-  // Get recent business users
-  async getRecentBusinessUsers(limit = 5) {
-    const businessUsers = await this.prisma.businessUser.findMany({
-      take: limit,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        fullName: true,
-        phoneNumber: true,
-        businessUserType: true,
-        isEmailConfirmed: true,
-        isAgreementAccepted: true,
-        createdAt: true,
-        updatedAt: true,
-        businesses: {
-          take: 1,
-          select: {
-            business: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return businessUsers.map((user) => ({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      fullName: user.fullName,
-      phoneNumber: user.phoneNumber,
-      userType: user.businessUserType,
-      status: user.isEmailConfirmed ? 'ACTIVE' : 'PENDING_VERIFICATION',
-      businessName: user.businesses[0]?.business?.name || null,
-      createdAt: user.createdAt,
-      lastActivity: user.updatedAt,
-    }));
-  }
-
-  // Get all business users
-  async getAllBusinessUsers() {
-    const businessUsers = await this.prisma.businessUser.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        fullName: true,
-        phoneNumber: true,
-        businessUserType: true,
-        isEmailConfirmed: true,
-        isAgreementAccepted: true,
-        createdAt: true,
-        updatedAt: true,
-        businesses: {
-          select: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return businessUsers.map((user) => ({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      fullName: user.fullName,
-      phoneNumber: user.phoneNumber,
-      userType: user.businessUserType,
-      status: user.isEmailConfirmed ? 'ACTIVE' : 'PENDING_VERIFICATION',
-      agreementAccepted: user.isAgreementAccepted,
-      businesses: user.businesses.map((b) => ({
-        id: b.business.id,
-        name: b.business.name,
-      })),
-      createdAt: user.createdAt,
-      lastActivity: user.updatedAt,
-    }));
   }
 
   /**
@@ -779,8 +1057,131 @@ export class BusinessService {
     }
   }
 
+  // Get user by ID (regular user)
+  async getUserById(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        dateOfBirth: true,
+        gender: true,
+        email: true,
+        username: true,
+        phoneNumber: true,
+        avatarId: true,
+        profilePicture: true,
+        isAgreementAccepted: true,
+        isEmailConfirmed: true,
+        isPhoneConfirmed: true,
+        twoFactorEnabled: true,
+        onboardingCompleted: true,
+        hasAcceptedPolicy: true,
+        twoFactorType: true,
+        isBanned: true,
+        banDate: true,
+        createdAt: true,
+        updatedAt: true,
+        clerkUserId: true,
+        avatar: true,
+        userSettings: true,
+        favorites: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        businessClients: {
+          select: {
+            business: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        reviews: {
+          select: {
+            id: true,
+            ratings: true,
+            business: {
+              select: {
+                name: true,
+              },
+            },
+            createdAt: true,
+          },
+          take: 5,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+        refreshTokens: {
+          select: {
+            lastLogin: true,
+            userAgent: true,
+            device: true,
+          },
+          take: 1,
+          orderBy: {
+            lastLogin: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const lastLoginToken = user.refreshTokens[0];
+
+    return {
+      ...user,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+      lastLoginAt: lastLoginToken?.lastLogin || user.updatedAt,
+      lastLoginDevice: lastLoginToken?.device,
+    };
+  }
+
+  // Force password reset for regular user
+  async forcePasswordReset(userId: string, adminId: string) {
+    // Check if user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Generate reset token (you might want to implement a PasswordResetToken model)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+
+    // Note: You need to create a PasswordResetToken model or use your existing method
+    // await this.prisma.passwordResetToken.create({
+    //   data: {
+    //     userId,
+    //     tokenHash,
+    //     expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour
+    //   },
+    // });
+
+    await this.logAudit(adminId, 'RESET_PASSWORD', userId, {
+      action: 'password_reset_forced',
+    });
+
+    // IMPORTANT: Send rawToken via email/SMS
+    return { success: true, token: rawToken }; // In production, don't return token, send via email
+  }
+
   // Force password reset for business user
-  async forceBusinessUserPasswordReset(businessUserId: string) {
+  async forceBusinessUserPasswordReset(
+    businessUserId: string,
+    adminId: string,
+  ) {
     const businessUser = await this.prisma.businessUser.findUnique({
       where: { id: businessUserId },
     });
@@ -791,16 +1192,41 @@ export class BusinessService {
 
     const rawToken = crypto.randomBytes(32).toString('hex');
 
-    // await this.logAudit(adminId, 'RESET_PASSWORD', businessUserId, {
-    //   action: 'business_user_password_reset_forced',
-    //   userType: 'BUSINESS',
-    // });
+    await this.logAudit(adminId, 'RESET_PASSWORD', businessUserId, {
+      action: 'business_user_password_reset_forced',
+      userType: 'BUSINESS',
+    });
 
     return { success: true, token: rawToken }; // In production, send via email
   }
 
+  // Change email for regular user
+  async changeEmail(userId: string, email: string, adminId: string) {
+    // Check if email already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser && existingUser.id !== userId) {
+      throw new BadRequestException('Email already in use');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { email, isEmailConfirmed: false }, // Reset email confirmation
+    });
+
+    await this.logAudit(adminId, 'CHANGE_EMAIL', userId, { email });
+
+    return { success: true };
+  }
+
   // Change email for business user
-  async changeBusinessUserEmail(businessUserId: string, email: string) {
+  async changeBusinessUserEmail(
+    businessUserId: string,
+    email: string,
+    adminId: string,
+  ) {
     const existingUser = await this.prisma.businessUser.findUnique({
       where: { email },
     });
@@ -814,16 +1240,41 @@ export class BusinessService {
       data: { email, isEmailConfirmed: false },
     });
 
-    // await this.logAudit(adminId, 'CHANGE_EMAIL', businessUserId, {
-    //   email,
-    //   userType: 'BUSINESS',
-    // });
+    await this.logAudit(adminId, 'CHANGE_EMAIL', businessUserId, {
+      email,
+      userType: 'BUSINESS',
+    });
+
+    return { success: true };
+  }
+
+  // Change phone for regular user
+  async changePhone(userId: string, phone: string, adminId: string) {
+    // Check if phone already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { phoneNumber: phone },
+    });
+
+    if (existingUser && existingUser.id !== userId) {
+      throw new BadRequestException('Phone number already in use');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { phoneNumber: phone, isPhoneConfirmed: false }, // Reset phone confirmation
+    });
+
+    await this.logAudit(adminId, 'CHANGE_PHONE', userId, { phone });
 
     return { success: true };
   }
 
   // Change phone for business user
-  async changeBusinessUserPhone(businessUserId: string, phone: string) {
+  async changeBusinessUserPhone(
+    businessUserId: string,
+    phone: string,
+    adminId: string,
+  ) {
     const existingUser = await this.prisma.businessUser.findUnique({
       where: { phoneNumber: phone },
     });
@@ -837,10 +1288,36 @@ export class BusinessService {
       data: { phoneNumber: phone },
     });
 
-    // await this.logAudit(adminId, 'CHANGE_PHONE', businessUserId, {
-    //   phone,
-    //   userType: 'BUSINESS',
-    // });
+    await this.logAudit(adminId, 'CHANGE_PHONE', businessUserId, {
+      phone,
+      userType: 'BUSINESS',
+    });
+
+    return { success: true };
+  }
+
+  // Change status (ban/unban) for regular user
+  async changeStatus(userId: string, isBanned: boolean, adminId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned,
+        banDate: isBanned ? new Date() : null,
+      },
+    });
+
+    await this.logAudit(adminId, isBanned ? 'BAN_USER' : 'UNBAN_USER', userId, {
+      isBanned,
+      banDate: isBanned ? new Date() : null,
+    });
 
     return { success: true };
   }
@@ -849,286 +1326,98 @@ export class BusinessService {
   async changeBusinessUserEmailConfirmation(
     businessUserId: string,
     isEmailConfirmed: boolean,
+    adminId: string,
   ) {
     await this.prisma.businessUser.update({
       where: { id: businessUserId },
       data: { isEmailConfirmed },
     });
 
-    // await this.logAudit(adminId, 'CHANGE_EMAIL_CONFIRMATION', businessUserId, {
-    //   isEmailConfirmed,
-    //   userType: 'BUSINESS',
-    // });
+    await this.logAudit(adminId, 'CHANGE_EMAIL_CONFIRMATION', businessUserId, {
+      isEmailConfirmed,
+      userType: 'BUSINESS',
+    });
 
     return { success: true };
   }
 
-  //   async getBusinesses() {
-  //     const businesses = await this.prisma.business.findMany({
-  //       include: { user: true },
-  //     });
-  //     if (!businesses) throw new NotFoundException();
+  // Get system statistics
+  async getSystemStatistics() {
+    const [
+      totalRegularUsers,
+      totalBusinessUsers,
+      totalBusinesses,
+      totalActiveAppointments,
+      totalCompletedAppointments,
+      totalRevenue,
+      newUsersLast7Days,
+      newBusinessUsersLast7Days,
+      newBusinessesLast7Days,
+    ] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.businessUser.count(),
+      this.prisma.business.count(),
+      this.prisma.appointment.count({
+        where: {
+          status: {
+            in: ['CREATED', 'CONFIRMED', 'CHECKED_IN'],
+          },
+        },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          status: 'COMPLETED',
+        },
+      }),
+      this.prisma.transaction.aggregate({
+        _sum: {
+          amountSent: true,
+        },
+        where: {
+          transactionStatus: 'PAID',
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+      this.prisma.businessUser.count({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+      this.prisma.business.count({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+    ]);
 
-  //     return businesses.map((business) => ({
-  //       id: business.id,
-  //       name: business.name,
-  //       user: business.user,
-  //       stripeCustomerId: business.stripeCustomerId,
-  //       stripeSubscriptionId: business.stripeSubscriptionId,
-  //       subscriptionPlan: business.subscriptionPlan,
-  //       subscriptionStatus: business.subscriptionStatus,
-  //     }));
-  //   }
-
-  //   async getBusiness(businessId: string) {
-  //     const business = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //       include: { user: true },
-  //     });
-  //     if (!business) throw new NotFoundException();
-
-  //     return {
-  //       name: business.name,
-  //       user: business.user,
-  //       stripeCustomerId: business.stripeCustomerId,
-  //       stripeSubscriptionId: business.stripeSubscriptionId,
-  //       subscriptionPlan: business.subscriptionPlan,
-  //       subscriptionStatus: business.subscriptionStatus,
-  //     };
-  //   }
-
-  //   async getSubscription(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     if (!biz?.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked');
-
-  //     // List subscriptions for this Stripe customer
-  //     const subscriptions = await this.stripe.subscriptions.list({
-  //       customer: biz.stripeCustomerId,
-  //       status: 'all',
-  //       expand: ['data.plan.product'],
-  //     });
-
-  //     return subscriptions.data;
-  //   }
-
-  //   async getPayments(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     console.log('Business fetched for payments:', biz);
-  //     if (!biz) throw new NotFoundException('Business not found'); // Business doesn't exist
-  //     if (!biz.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked'); // Matches test
-
-  //     const payments = await this.stripe.paymentIntents.list({
-  //       customer: biz.stripeCustomerId,
-  //     });
-
-  //     console.log(
-  //       'Fetched payments for business:',
-  //       businessId,
-  //       payments.data.length,
-  //     );
-
-  //     return payments.data;
-  //   }
-
-  //   async getFailedPayments(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     if (!biz?.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked');
-
-  //     const all = await this.stripe.paymentIntents.list({
-  //       customer: biz.stripeCustomerId,
-  //     });
-
-  //     return all.data.filter(
-  //       (pi) =>
-  //         pi.status === 'requires_payment_method' || pi.status === 'canceled',
-  //     );
-  //   }
-
-  //   async cancelSubscription(id: string) {
-  //     console.log('Canceling subscription for business ID:', id);
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { userId: id },
-  //     });
-  //     if (!biz) throw new NotFoundException('Business not found');
-
-  //     if (!biz.stripeSubscriptionId)
-  //       throw new NotFoundException('Subscription not linked');
-
-  //     const canceled = await this.stripe.subscriptions.cancel(
-  //       biz.stripeSubscriptionId,
-  //     );
-
-  //     // Update database to reflect cancellation
-  //     await this.prisma.business.update({
-  //       where: { userId: id },
-  //       data: {
-  //         stripeSubscriptionId: null, // remove the subscription ID
-  //         // optionally record cancellation timestamp/status:
-  //         subscriptionStatus: canceled.status,
-  //       },
-  //     });
-
-  //     return { success: true, status: canceled.status };
-  //   }
-
-  //   // Immediate DB update in refundPayment()
-  //   async refundPayment(paymentIntentId: string) {
-  //     const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId);
-
-  //     if (pi.status !== 'succeeded') {
-  //       throw new Error(`Cannot refund: ${pi.status}`);
-  //     }
-
-  //     // Optimistic update
-  //     await this.prisma.transaction.update({
-  //       where: { stripePaymentId: paymentIntentId },
-  //       data: { status: 'refund_pending' },
-  //     });
-
-  //     const refund = await this.stripe.refunds.create({
-  //       payment_intent: paymentIntentId,
-  //       reason: 'requested_by_customer',
-  //     });
-
-  //     // Confirm update
-  //     await this.prisma.transaction.update({
-  //       where: { stripePaymentId: paymentIntentId },
-  //       data: {
-  //         status: 'refunded',
-  //         refundAmount: refund.amount,
-  //       },
-  //     });
-
-  //     return refund;
-  //   }
-
-  //   async getDisputes(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     if (!biz?.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked');
-
-  //     // list disputes, optionally filtered by PaymentIntent/customer
-  //     const disputes = await this.stripe.disputes.list({
-  //       // optionally: { payment_intent: someId, limit: 100 }
-  //     });
-  //     return disputes.data;
-  //   }
-
-  //   // In your BusinessService's getAllPayments method:
-  //   async getAllPayments(limit = 50, cursor?: string) {
-  //     const where: any = {};
-
-  //     if (cursor) {
-  //       const cursorTransaction = await this.prisma.transaction.findUnique({
-  //         where: { id: cursor },
-  //       });
-
-  //       if (cursorTransaction) {
-  //         where.createdAt = { lt: cursorTransaction.createdAt };
-  //       }
-  //     }
-
-  //     const transactions = await this.prisma.transaction.findMany({
-  //       take: limit,
-  //       where,
-  //       orderBy: { createdAt: 'desc' },
-  //       include: {
-  //         business: {
-  //           include: {
-  //             user: {
-  //               select: {
-  //                 name: true,
-  //                 email: true,
-  //               },
-  //             },
-  //           },
-  //         },
-  //       },
-  //     });
-
-  //     // Format for frontend
-  //     const formattedData = transactions.map((t) => ({
-  //       id: t.id,
-  //       stripePaymentId: t.stripePaymentId,
-  //       description: t.description || 'Payment',
-  //       amount: t.amount,
-  //       refundAmount: t.refundAmount,
-  //       currency: t.currency,
-  //       status: t.status,
-  //       refunded: t.refundAmount > 0,
-  //       userName: t.business?.user?.name || t.userName || 'Unknown User',
-  //       userEmail: t.business?.user?.email || t.userEmail || 'No Email',
-  //       businessId: t.business?.id,
-  //       businessName: t.business?.name,
-  //       createdAt: t.createdAt.toISOString(),
-  //       customerId: t.business?.stripeCustomerId,
-  //     }));
-
-  //     const nextCursor =
-  //       transactions.length > 0
-  //         ? transactions[transactions.length - 1].id
-  //         : undefined;
-
-  //     return {
-  //       data: formattedData,
-  //       hasMore: transactions.length === limit,
-  //       nextCursor,
-  //     };
-  //   }
-
-  //   async getAllFailedPayments(limit = 50, starting_after?: string) {
-  //     const all = await this.stripe.paymentIntents.list({
-  //       limit,
-  //       starting_after,
-  //     });
-  //     return all.data.filter(
-  //       (pi) =>
-  //         pi.status === 'requires_payment_method' || pi.status === 'canceled',
-  //     );
-  //   }
-
-  //   async getAllDisputes(limit = 50, starting_after?: string) {
-  //     const disputes = await this.stripe.disputes.list({ limit, starting_after });
-  //     return disputes.data;
-  //   }
-
-  //   async getAllRefunds(limit = 50, starting_after?: string) {
-  //     const refunds = await this.stripe.refunds.list({ limit, starting_after });
-  //     return refunds.data;
-  //   }
-
-  //   async getGlobalPaymentStats() {
-  //     const stats = await this.prisma.transaction.aggregate({
-  //       _sum: {
-  //         amount: true,
-  //         refundAmount: true,
-  //       },
-  //       _count: {
-  //         id: true,
-  //       },
-  //     });
-
-  //     const succeededTotal = await this.prisma.transaction.aggregate({
-  //       where: { status: 'succeeded' },
-  //       _sum: { amount: true },
-  //     });
-
-  //     return {
-  //       totalTransactions: stats._count.id,
-  //       completedRevenue: (succeededTotal._sum.amount || 0) / 100,
-  //       totalVolume: (stats._sum.amount || 0) / 100,
-  //       totalRefunded: (stats._sum.refundAmount || 0) / 100,
-  //     };
-  //   }
+    return {
+      users: {
+        totalRegularUsers,
+        totalBusinessUsers,
+        newUsersLast7Days,
+        newBusinessUsersLast7Days,
+      },
+      businesses: {
+        totalBusinesses,
+        newBusinessesLast7Days,
+      },
+      appointments: {
+        totalActive: totalActiveAppointments,
+        totalCompleted: totalCompletedAppointments,
+      },
+      revenue: {
+        total: totalRevenue._sum.amountSent || 0,
+      },
+    };
+  }
 }

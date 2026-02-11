@@ -4,7 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config'; // Fixed Import
 import { AppController } from './app.controller.js';
 import { AuthModule } from './auth/auth.module.js';
-// import { MetricsModule } from './admin/metrics/metrics.module.js';
+import { MetricsModule } from './admin/metrics/metrics.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { AdminService } from './admin/admin.service.js';
 // import { AuditModule } from './audit/audit.module.js';
@@ -31,7 +31,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 
     // StripeModule,
     AuthModule,
-    // MetricsModule,
+    MetricsModule,
     AdminModule,
     // AuditModule,
     // TestModule,

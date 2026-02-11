@@ -51,6 +51,11 @@ const statusConfig: Record<
     icon: <XCircle className="h-3 w-3" />,
     className: "bg-status-inactive/10 text-status-inactive",
   },
+   banned: {
+    label: "Banned",
+    icon: <XCircle className="h-3 w-3" />,
+    className: "bg-status-inactive/10 text-status-inactive",
+  },
   // Payment statuses
   completed: {
     label: "Completed",

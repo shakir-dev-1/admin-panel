@@ -1,10 +1,10 @@
 // UserTypeBadge.tsx
 import { cn } from '@/lib/utils';
 import { Building2, User, Star } from 'lucide-react';
-import type { User as APIUser } from '@/hooks/useUsers';
+// import type { User as APIUser } from '@/hooks/useUsers';
 
 interface UserTypeBadgeProps {
-  type: APIUser['userType']; 
+  type: string; 
   className?: string;
 }
 

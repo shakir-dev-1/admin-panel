@@ -17,7 +17,8 @@ export type UserSortField =
   | 'email'
   | 'username'
   | 'createdAt'
-  | 'updatedAt';
+  | 'updatedAt'
+  | 'lastLogin';
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -83,10 +84,17 @@ export class UsersService {
       where.isBanned = false;
     }
 
-    // We use the specific OrderBy input type from Prisma
-    const orderBy: Prisma.UserOrderByWithRelationInput = {
-      [sortBy]: sortOrder,
-    };
+    // Build orderBy based on sort field
+    let orderBy: Prisma.UserOrderByWithRelationInput = {};
+
+    // Handle lastLogin separately since it's from a relation
+    if (sortBy === 'lastLogin') {
+      // We'll need to sort in memory or use a subquery for proper sorting
+      // For now, default to createdAt
+      orderBy = { createdAt: sortOrder };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -115,13 +123,33 @@ export class UsersService {
               },
             },
           },
+
+          // Get the most recent refresh token for last login info
+          refreshTokens: {
+            select: {
+              lastLogin: true,
+              userAgent: true,
+              device: true,
+              ipAddress: true,
+              city: true,
+              country: true,
+            },
+            take: 1,
+            orderBy: {
+              lastLogin: 'desc',
+            },
+          },
         },
       }),
       this.prisma.user.count({ where }),
     ]);
 
-    return {
-      data: users.map((user) => ({
+    // Transform results to include last login info
+    const userData = users.map((user) => {
+      const lastRefreshToken = user.refreshTokens[0];
+      const lastLoginAt = lastRefreshToken?.lastLogin;
+
+      return {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
         email: user.email,
@@ -129,10 +157,32 @@ export class UsersService {
         phoneNumber: user.phoneNumber,
         status: user.isBanned ? ('BANNED' as const) : ('ACTIVE' as const),
         banDate: user.banDate,
-        lastLoginAt: user.updatedAt,
+        lastLoginAt: lastLoginAt,
+        lastLoginDevice: lastRefreshToken?.device || null,
+        lastLoginIp: lastRefreshToken?.ipAddress || null,
+        lastLoginLocation:
+          lastRefreshToken?.city || lastRefreshToken?.country
+            ? `${lastRefreshToken.city || ''}${lastRefreshToken.city && lastRefreshToken.country ? ', ' : ''}${lastRefreshToken.country || ''}`
+            : null,
         createdAt: user.createdAt,
         businessName: user.businessClients[0]?.business?.name || null,
-      })),
+        userType: 'consumer',
+      };
+    });
+
+    // If sorting by lastLogin, sort in memory
+    let sortedData = userData;
+    if (sortBy === 'lastLogin') {
+      sortedData = [...userData].sort((a, b) => {
+        const aTime = a.lastLoginAt ? new Date(a.lastLoginAt).getTime() : 0;
+        const bTime = b.lastLoginAt ? new Date(b.lastLoginAt).getTime() : 0;
+
+        return sortOrder === 'asc' ? aTime - bTime : bTime - aTime;
+      });
+    }
+
+    return {
+      data: sortedData,
       pagination: {
         page,
         limit,
@@ -171,21 +221,43 @@ export class UsersService {
             },
           },
         },
+        // Get last login info
+        refreshTokens: {
+          select: {
+            lastLogin: true,
+            device: true,
+            ipAddress: true,
+            city: true,
+            country: true,
+          },
+          take: 1,
+          orderBy: {
+            lastLogin: 'desc',
+          },
+        },
       },
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
-      email: user.email,
-      username: user.username,
-      phoneNumber: user.phoneNumber,
-      status: user.isBanned ? 'BANNED' : 'ACTIVE',
-      banDate: user.banDate,
-      lastLoginAt: user.updatedAt, // Using updatedAt as proxy for last activity
-      businessName: user.businessClients[0]?.business?.name || null,
-      createdAt: user.createdAt,
-    }));
+    return users.map((user) => {
+      const lastRefreshToken = user.refreshTokens[0];
+      const lastLoginAt = lastRefreshToken?.lastLogin;
+
+      return {
+        id: user.id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+        email: user.email,
+        username: user.username,
+        phoneNumber: user.phoneNumber,
+        status: user.isBanned ? 'BANNED' : 'ACTIVE',
+        banDate: user.banDate,
+        lastLoginAt: lastLoginAt,
+        lastLoginDevice: lastRefreshToken?.device || null,
+        lastLoginIp: lastRefreshToken?.ipAddress || null,
+        businessName: user.businessClients[0]?.business?.name || null,
+        createdAt: user.createdAt,
+        userType: 'consumer',
+      };
+    });
   }
 
   // Get all regular users
@@ -213,24 +285,50 @@ export class UsersService {
             },
           },
         },
+        // Get last login info
+        refreshTokens: {
+          select: {
+            lastLogin: true,
+            device: true,
+            ipAddress: true,
+            city: true,
+            country: true,
+          },
+          take: 1,
+          orderBy: {
+            lastLogin: 'desc',
+          },
+        },
       },
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
-      email: user.email,
-      username: user.username,
-      phoneNumber: user.phoneNumber,
-      status: user.isBanned ? 'BANNED' : 'ACTIVE',
-      banDate: user.banDate,
-      lastLoginAt: user.updatedAt,
-      createdAt: user.createdAt,
-      businessName: user.businessClients[0]?.business?.name || null,
-    }));
+    return users.map((user) => {
+      const lastRefreshToken = user.refreshTokens[0];
+      const lastLoginAt = lastRefreshToken?.lastLogin;
+
+      return {
+        id: user.id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+        email: user.email,
+        username: user.username,
+        phoneNumber: user.phoneNumber,
+        status: user.isBanned ? 'BANNED' : 'ACTIVE',
+        banDate: user.banDate,
+        lastLoginAt: lastLoginAt,
+        lastLoginDevice: lastRefreshToken?.device || null,
+        lastLoginIp: lastRefreshToken?.ipAddress || null,
+        lastLoginLocation:
+          lastRefreshToken?.city || lastRefreshToken?.country
+            ? `${lastRefreshToken.city || ''}${lastRefreshToken.city && lastRefreshToken.country ? ', ' : ''}${lastRefreshToken.country || ''}`
+            : null,
+        createdAt: user.createdAt,
+        businessName: user.businessClients[0]?.business?.name || null,
+        userType: 'consumer',
+      };
+    });
   }
 
-  // Get user by ID (regular user)
+  // Get user by ID (regular user) - Already includes last login
   async getUserById(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -296,8 +394,15 @@ export class UsersService {
             lastLogin: true,
             userAgent: true,
             device: true,
+            ipAddress: true,
+            city: true,
+            country: true,
+            latitude: true,
+            longitude: true,
+            regionName: true,
+            timezone: true,
           },
-          take: 1,
+          take: 5, // Get last 5 login sessions
           orderBy: {
             lastLogin: 'desc',
           },
@@ -310,12 +415,36 @@ export class UsersService {
     }
 
     const lastLoginToken = user.refreshTokens[0];
+    const lastLoginAt = lastLoginToken?.lastLogin;
 
     return {
       ...user,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
-      lastLoginAt: lastLoginToken?.lastLogin || user.updatedAt,
+      userType: 'consumer',
+      lastLoginAt: lastLoginAt,
       lastLoginDevice: lastLoginToken?.device,
+      lastLoginIp: lastLoginToken?.ipAddress,
+      lastLoginLocation:
+        lastLoginToken?.city || lastLoginToken?.country
+          ? `${lastLoginToken.city || ''}${lastLoginToken.city && lastLoginToken.country ? ', ' : ''}${lastLoginToken.country || ''}`
+          : null,
+      // Include all recent login sessions
+      recentLoginSessions: user.refreshTokens.map((token) => ({
+        lastLogin: token.lastLogin,
+        device: token.device,
+        userAgent: token.userAgent,
+        ipAddress: token.ipAddress,
+        location:
+          token.city || token.country
+            ? `${token.city || ''}${token.city && token.country ? ', ' : ''}${token.country || ''}`
+            : null,
+        coordinates:
+          token.latitude && token.longitude
+            ? { latitude: token.latitude, longitude: token.longitude }
+            : null,
+        timezone: token.timezone,
+        region: token.regionName,
+      })),
     };
   }
 
@@ -417,5 +546,51 @@ export class UsersService {
     // });
 
     return { success: true };
+  }
+
+  // New method: Get user login history
+  async getUserLoginHistory(userId: string, limit = 10) {
+    const refreshTokens = await this.prisma.refreshToken.findMany({
+      where: {
+        userId: userId,
+      },
+      select: {
+        id: true,
+        lastLogin: true,
+        userAgent: true,
+        device: true,
+        ipAddress: true,
+        city: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+        regionName: true,
+        timezone: true,
+        createdAt: true,
+      },
+      orderBy: {
+        lastLogin: 'desc',
+      },
+      take: limit,
+    });
+
+    return refreshTokens.map((token) => ({
+      id: token.id,
+      lastLogin: token.lastLogin,
+      device: token.device,
+      userAgent: token.userAgent,
+      ipAddress: token.ipAddress,
+      location:
+        token.city || token.country
+          ? `${token.city || ''}${token.city && token.country ? ', ' : ''}${token.country || ''}`
+          : null,
+      coordinates:
+        token.latitude && token.longitude
+          ? { latitude: token.latitude, longitude: token.longitude }
+          : null,
+      region: token.regionName,
+      timezone: token.timezone,
+      sessionStart: token.createdAt,
+    }));
   }
 }

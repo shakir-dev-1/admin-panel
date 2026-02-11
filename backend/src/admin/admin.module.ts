@@ -7,10 +7,11 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { UsersModule } from './users/users.module.js';
 // import { BusinessController } from './business/business.controller.js';
 // import { BusinessService } from './business/business.service.js';
-import { BusinessModule } from './business/business.module.js';
+import { BusinessUsersModule } from './business-users/business-users.module.js';
+import { InfluencersModule } from './influencers/influencers.module.js';
 
 @Module({
-  imports: [UsersModule, BusinessModule],
+  imports: [UsersModule, BusinessUsersModule, InfluencersModule],
   providers: [
     {
       provide: APP_GUARD,

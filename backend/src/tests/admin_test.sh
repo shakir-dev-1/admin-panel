@@ -2,9 +2,25 @@
 
 # Configuration
 BASE_URL="http://localhost:3001/api"
-ADMIN_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ZWI3NDQ2YS02YjU5LTRkMGYtOTU2NS00MDM3MGUyZWJkODciLCJpc0FkbWluIjp0cnVlLCJpYXQiOjE3NzAwMzkzODgsImV4cCI6MTc3MDEyNTc4OH0.K9LLYSsCG-BPz1oS2jArePoccL_giQIBTwsFXHmtoxg"
+echo "1. Logging in as admin..."
+ADMIN_TOKEN=$(curl -s -X POST "$BASE_URL/admin/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@marvalero.com","password":"admin123"}' | \
+  grep -o '"accessToken":"[^"]*"' | \
+  cut -d'"' -f4)
+
+if [ -z "$ADMIN_TOKEN" ]; then
+    echo "ERROR: Login failed - no token received"
+    exit 1
+fi
+
+echo "Token obtained: ${ADMIN_TOKEN:0:20}..."
+
+# ADMIN_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5ZWI3NDQ2YS02YjU5LTRkMGYtOTU2NS00MDM3MGUyZWJkODciLCJpc0FkbWluIjp0cnVlLCJpYXQiOjE3NzAwMzkzODgsImV4cCI6MTc3MDEyNTc4OH0.K9LLYSsCG-BPz1oS2jArePoccL_giQIBTwsFXHmtoxg"
 TEST_USER_ID="1ee6b383-abd9-4d9f-8a9b-b7fc8fa84001"
 TEST_ADMIN_ID="9eb7446a-6b59-4d0f-9565-40370e2ebd87"
+
+
 
 # Headers
 HEADERS=(-H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json")
@@ -42,7 +58,13 @@ echo "6. Testing All Business Users..."
 curl -s -X GET "$BASE_URL/admin/business/users" "${HEADERS[@]}"
 echo -e "\n"
 
+# 7. All Influencers
+echo "4. Testing All Influencers..."
+curl -s -X GET "$BASE_URL/admin/influencers/all" "${HEADERS[@]}"
+echo -e "\n"
+
 # Save to test results
 echo "=== Test Results Summary ===" > test_results.txt
 curl -s -X GET "$BASE_URL/admin/ping" "${HEADERS[@]}" >> test_results.txt
 echo -e "\n" >> test_results.txt
+

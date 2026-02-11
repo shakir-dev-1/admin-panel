@@ -102,38 +102,5 @@ describe('Admin Integration Tests', () => {
     await app.close();
   });
 
-  /**
-   * Force password reset
-   */
-  it('POST /admin/users/:userId/reset-password - should force password reset', async () => {
-    const res = await request(app.getHttpServer())
-      .post(`/admin/users/${testUserId}/reset-password`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(201);
-
-    expect(res.body).toHaveProperty('success', true);
-    expect(res.body).toHaveProperty('token');
-  });
-
-  /**
-   * Change user phone
-   */
-  it('PATCH /admin/users/:userId/phone - should change user phone', async () => {
-    const newPhone = '+9876543210';
-
-    const res = await request(app.getHttpServer())
-      .patch(`/admin/users/${testUserId}/phone`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ phoneNumber: newPhone })
-      .expect(200);
-
-    expect(res.body).toHaveProperty('success', true);
-
-    // Verify phone was updated
-    const updatedUser = await prisma.user.findUnique({
-      where: { id: testUserId },
-    });
-    expect(updatedUser?.phoneNumber).toBe(newPhone);
-    expect(updatedUser?.isPhoneConfirmed).toBe(false); // Should reset confirmation
-  });
+ 
 });

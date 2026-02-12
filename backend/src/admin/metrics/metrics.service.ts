@@ -213,8 +213,9 @@ export class MetricsService {
 
       // Inactive/banned users
       inactiveUsers:
-        totalUsers -
-        activeConsumers +
+        totalConsumers -
+        activeConsumers -
+        bannedConsumers +
         (totalBusinessUsers - activeBusinessUsers) +
         (totalInfluencers - activeInfluencers),
       bannedConsumers,

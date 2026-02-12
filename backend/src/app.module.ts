@@ -7,7 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { MetricsModule } from './admin/metrics/metrics.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { AdminService } from './admin/admin.service.js';
-// import { AuditModule } from './audit/audit.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { PrismaService } from './prisma/prisma.service.js';
 // import { TestModule } from './test/test.module.js';
 // import { StripeModule } from './stripe/stripe.module.js';
@@ -33,7 +33,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     AuthModule,
     MetricsModule,
     AdminModule,
-    // AuditModule,
+    AuditModule,
     // TestModule,
   ],
   controllers: [AppController],

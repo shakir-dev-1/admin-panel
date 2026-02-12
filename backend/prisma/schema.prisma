@@ -31,7 +31,7 @@ model AdminAuditLog {
   createdAt     DateTime  @default(now())
 
   admin         Admin?     @relation(fields: [adminId], references: [id])  
-
+  
   @@index([adminId])
   @@index([actionType])
   @@index([createdAt])

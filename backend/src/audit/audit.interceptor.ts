@@ -1,139 +1,302 @@
-// // audit.interceptor.ts
-// import {
-//   Injectable,
-//   NestInterceptor,
-//   ExecutionContext,
-//   CallHandler,
-//   Logger,
-// } from '@nestjs/common';
-// import { Observable } from 'rxjs';
-// import { tap } from 'rxjs/operators';
-// import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+  Logger,
+} from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+import { Request, Response } from 'express';
+import { Prisma } from '../generated/prisma/client.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
-// @Injectable()
-// export class AuditInterceptor implements NestInterceptor {
-//   private readonly logger = new Logger(AuditInterceptor.name);
+// Define specific response types
+// type ArrayResponse = {
+//   count: number;
+//   type: 'array';
+//   sample?: Record<string, unknown>[];
+// };
 
-//   constructor(private prisma: PrismaService) {}
+// type TruncatedResponse = {
+//   truncated: boolean;
+//   length: number;
+//   originalLength?: number;
+//   preview?: string;
+// };
 
-//   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-//     const request = context.switchToHttp().getRequest();
-//     const response = context.switchToHttp().getResponse();
-    
-//     const adminId = request.user?.adminId;
-//     const method = request.method;
-//     const url = request.url;
-//     const body = this.sanitizeBody(request.body);
-//     const params = request.params;
-//     const query = request.query;
-    
-//     const startTime = Date.now();
+// type PrimitiveResponse = {
+//   value: string;
+//   type?: 'string' | 'number' | 'boolean';
+// };
 
-//     return next.handle().pipe(
-//       tap({
-//         next: async (data) => {
-//           const duration = Date.now() - startTime;
-//           const statusCode = response.statusCode;
-          
-//           try {
-//             await this.logAction({
-//               adminId,
-//               actionType: `${method} ${url}`,
-//               metadata: {
-//                 url,
-//                 method,
-//                 statusCode,
-//                 duration,
-//                 params,
-//                 query,
-//                 requestBody: body,
-//                 response: this.sanitizeResponse(data),
-//               },
-//             });
-//           } catch (error) {
-//             // Don't throw, just log the error
-//             this.logger.error(`Failed to log audit: ${error.message}`);
-//           }
-//         },
-//         error: async (error) => {
-//           const duration = Date.now() - startTime;
-//           const statusCode = error.getStatus ? error.getStatus() : 500;
-          
-//           try {
-//             await this.logAction({
-//               adminId,
-//               actionType: `${method} ${url}`,
-//               metadata: {
-//                 url,
-//                 method,
-//                 statusCode,
-//                 duration,
-//                 params,
-//                 query,
-//                 requestBody: body,
-//                 error: error.message,
-//                 stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-//               },
-//             });
-//           } catch (logError) {
-//             this.logger.error(`Failed to log audit error: ${logError.message}`);
-//           }
-//         },
-//       }),
-//     );
-//   }
+// type SanitizedResponse =
+//   | Record<string, unknown>
+//   | ArrayResponse
+//   | TruncatedResponse
+//   | PrimitiveResponse
+//   | null
+//   | undefined;
 
-//   private async logAction(data: {
-//     adminId?: string;  // Make optional
-//     actionType: string;
-//     metadata: any;
-//   }) {
-//     // if (!data.adminId) {
-//     //   // Could be a public endpoint 
-//     //   return;
-//     // }
+// Simplified metadata structure - only store what's needed for audit
+interface AuditMetadata extends Record<string, any> {
+  method: string;
+  path: string; // Store path without query params
+  statusCode: number;
+  duration: number;
+  query?: Record<string, string | string[]>;
+  error?: string;
+  stack?: string;
+  timestamp: string;
+  // Only store essential request/response info
+  requestBody?: Record<string, unknown> | null;
+  responseSummary?: {
+    type: string;
+    count?: number;
+    truncated?: boolean;
+  };
+}
 
-//     console.log('Logging audit action:', data); // For debugging
+interface LogActionData {
+  adminId?: string;
+  actionType: string;
+  targetUserId?: string; // Add targetUserId
+  metadata: AuditMetadata;
+}
 
-//     await this.prisma.adminAuditLog.create({
-//       data: {
-//         adminId: data.adminId,
-//         actionType: data.actionType,
-//         metadata: data.metadata,
-//       },
-//     });
-//   }
+// Helper to convert AuditMetadata to Prisma.InputJsonValue
+function toPrismaJson(metadata: AuditMetadata): Prisma.InputJsonValue {
+  return metadata as unknown as Prisma.InputJsonValue;
+}
 
-//   private sanitizeBody(body: any): any {
-//     if (!body) return body;
-    
-//     const sanitized = { ...body };
-    
-//     // Remove sensitive fields
-//     const sensitiveFields = ['password', 'token', 'secret', 'creditCard', 'ssn'];
-    
-//     for (const field of sensitiveFields) {
-//       if (sanitized[field] !== undefined) {
-//         sanitized[field] = '[REDACTED]';
-//       }
-//     }
-    
-//     return sanitized;
-//   }
+// tap's next/error properties expect (value: T) => void, not Promise<void>.
+function voidTap<T>(fn: (value: T) => Promise<void>): (value: T) => void {
+  return (value) => void fn(value);
+}
 
-//   private sanitizeResponse(data: any): any {
-//     if (!data) return data;
-    
-//     // For large responses, just log summary
-//     if (Array.isArray(data) && data.length > 10) {
-//       return { count: data.length, type: 'array' };
-//     }
-    
-//     // Remove sensitive data from response
-//     const sanitized = this.sanitizeBody(data);
-    
-//     // Stringify if too large
-//     const json = JSON.stringify(sanitized);
-//     return json.length > 1000 ? { truncated: true, length: json.length } : sanitized;
-//   }
-// }
+@Injectable()
+export class AuditInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditInterceptor.name);
+
+  // Paths to exclude from audit logging
+  private readonly excludedPaths = [
+    '/admin/health',
+    '/admin/metrics',
+    '/admin/ping',
+    '/favicon.ico',
+  ];
+
+  constructor(private prisma: PrismaService) {}
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: { adminId?: string; id?: string } }>();
+    const response = context.switchToHttp().getResponse<Response>();
+
+    // Skip excluded paths
+    if (this.excludedPaths.includes(request.path)) {
+      return next.handle();
+    }
+
+    const adminId = request.user?.adminId || request.user?.id;
+    const method = request.method;
+    const path = request.path; // Store path without query params
+    // const fullUrl = request.url;
+    const body = this.sanitizeBody(request.body as Record<string, unknown>);
+    const params = request.params as Record<string, string>;
+    const query = request.query as Record<string, string | string[]>;
+
+    // Extract targetUserId from various possible locations
+    const targetUserId = this.extractTargetUserId(params, body);
+
+    const startTime = Date.now();
+
+    return next.handle().pipe(
+      tap({
+        next: voidTap(async (data: unknown) => {
+          const duration = Date.now() - startTime;
+          const statusCode = response.statusCode;
+
+          try {
+            await this.logAction({
+              adminId,
+              targetUserId,
+              actionType: `${method} ${path}`, // Use path, not full URL
+              metadata: {
+                method,
+                path,
+                statusCode,
+                duration,
+                query: Object.keys(query).length > 0 ? query : undefined,
+                requestBody: body,
+                responseSummary: this.getResponseSummary(data),
+                timestamp: new Date().toISOString(),
+              },
+            });
+          } catch (error) {
+            const err = error as Error;
+            this.logger.error(`Failed to log audit: ${err.message}`);
+          }
+        }),
+        error: voidTap(async (error: unknown) => {
+          const duration = Date.now() - startTime;
+          const err = error as Error & { getStatus?: () => number };
+          const statusCode = err.getStatus ? err.getStatus() : 500;
+
+          try {
+            await this.logAction({
+              adminId,
+              targetUserId,
+              actionType: `${method} ${path}`, // Use path, not full URL
+              metadata: {
+                method,
+                path,
+                statusCode,
+                duration,
+                query: Object.keys(query).length > 0 ? query : undefined,
+                requestBody: body,
+                error: err.message,
+                stack:
+                  process.env.NODE_ENV === 'development'
+                    ? err.stack
+                    : undefined,
+                timestamp: new Date().toISOString(),
+              },
+            });
+          } catch (logError) {
+            const logErr = logError as Error;
+            this.logger.error(`Failed to log audit error: ${logErr.message}`);
+          }
+        }),
+      }),
+    );
+  }
+
+  private async logAction(data: LogActionData): Promise<void> {
+    // Skip if no adminId (unauthenticated requests)
+    if (!data.adminId) {
+      return;
+    }
+
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId: data.adminId,
+        actionType: data.actionType,
+        targetUserId: data.targetUserId || null,
+        metadata: toPrismaJson(data.metadata),
+      },
+    });
+
+    this.logger.log(`Audit Log: ${data.actionType} by admin ${data.adminId}`);
+  }
+
+  /**
+   * Extract targetUserId from request params or body
+   */
+  private extractTargetUserId(
+    params: Record<string, string>,
+    body: Record<string, unknown> | null | undefined,
+  ): string | undefined {
+    // Check common parameter names for user IDs
+    const possibleIdFields = [
+      'userId',
+      'id',
+      'targetUserId',
+      'influencerId',
+      'businessUserId',
+      'adminId',
+    ];
+
+    // First check params (route parameters)
+    for (const field of possibleIdFields) {
+      if (params[field]) {
+        return params[field];
+      }
+    }
+
+    // Then check body
+    if (body) {
+      for (const field of possibleIdFields) {
+        const value = body[field];
+        if (typeof value === 'string' && value.length > 0) {
+          return value;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Create a summary of the response for metadata
+   */
+  private getResponseSummary(
+    data: unknown,
+  ): { type: string; count?: number; truncated?: boolean } | undefined {
+    if (data === null || data === undefined) {
+      return undefined;
+    }
+
+    if (Array.isArray(data)) {
+      return {
+        type: 'array',
+        count: data.length,
+      };
+    }
+
+    if (typeof data === 'object') {
+      return {
+        type: 'object',
+      };
+    }
+
+    return {
+      type: typeof data,
+    };
+  }
+
+  private sanitizeBody(
+    body: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> | null | undefined {
+    if (!body) return body;
+
+    const sanitized: Record<string, unknown> = { ...body };
+
+    const sensitiveFields = [
+      'password',
+      'token',
+      'secret',
+      'creditCard',
+      'ssn',
+      'accessToken',
+      'refreshToken',
+      'authorization',
+      'apiKey',
+      'twoFactorSecret',
+      'cnic',
+      'cnicIv',
+      'msisdn',
+      'msisdnIv',
+      'accountNumber',
+      'accountNumberIv',
+    ] as const;
+
+    for (const field of sensitiveFields) {
+      if (sanitized[field] !== undefined) {
+        sanitized[field] = '[REDACTED]';
+      }
+    }
+
+    // Remove the actual values but keep the structure
+    const json = JSON.stringify(sanitized);
+    if (json.length > 2000) {
+      return {
+        truncated: true,
+        fields: Object.keys(sanitized),
+      };
+    }
+
+    return sanitized;
+  }
+}

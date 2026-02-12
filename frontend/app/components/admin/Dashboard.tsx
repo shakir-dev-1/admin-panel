@@ -43,7 +43,12 @@ import {
   Cell,
 } from "recharts";
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
+const COLORS = ["#00C49F", "#0088FE", "#8884D8", "#FFBB28", "#FF8042"];
+
+// ─── Chart height constant ────────────────────────────────────────────────────
+// ResponsiveContainer only needs width="100%"; give it a fixed pixel height so
+// Recharts never sees -1 dimensions from an unresolved percentage chain.
+const CHART_HEIGHT = 350;
 
 export default function Dashboard() {
   // Single call for all metrics
@@ -167,7 +172,7 @@ export default function Dashboard() {
 
   if (!metrics) return <div className="p-4">No stats available</div>;
 
-  const stats = metrics; // metrics contains all DashboardStats
+  const stats = metrics;
   const businessMetrics = metrics.business;
 
   // Format login analytics data for the chart
@@ -307,7 +312,7 @@ export default function Dashboard() {
       {/* Charts Section */}
       <div className="grid gap-6 lg:grid-cols-2 mt-8">
         {/* User Type Distribution Chart */}
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>User Type Distribution</CardTitle>
             <CardDescription>
@@ -315,8 +320,8 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="relative h-80 w-full min-h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div style={{ width: "100%", height: CHART_HEIGHT }}>
+              <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
                 <PieChart>
                   <Pie
                     data={stats.userTypeDistribution}
@@ -327,7 +332,7 @@ export default function Dashboard() {
                       const data = payload as any;
                       return `${data.type}: ${(percent * 100).toFixed(0)}%`;
                     }}
-                    outerRadius={80}
+                    outerRadius={100}
                     fill="#8884d8"
                     dataKey="count"
                     nameKey="type"
@@ -358,7 +363,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Consumer Status Distribution Chart */}
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Consumer Status</CardTitle>
             <CardDescription>
@@ -366,8 +371,8 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="relative h-80 w-full min-h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div style={{ width: "100%", height: CHART_HEIGHT }}>
+              <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
                 <PieChart>
                   <Pie
                     data={stats.consumerStatusDistribution}
@@ -378,7 +383,7 @@ export default function Dashboard() {
                       const data = payload as any;
                       return `${data.status}: ${(percent * 100).toFixed(0)}%`;
                     }}
-                    outerRadius={80}
+                    outerRadius={100}
                     fill="#8884d8"
                     dataKey="count"
                     nameKey="status"
@@ -407,67 +412,67 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Daily Logins Chart */}
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>Daily Logins (Last 7 Days)</CardTitle>
-          <CardDescription>
-            Login activity by user type
-            {loginAnalytics && (
-              <span className="ml-2 text-sm font-medium">
-                Total: {loginAnalytics.totalLoginsLast7Days} logins
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="relative h-80 w-full min-h-[320px]">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(label) => {
-                      const item = chartData.find((d) => d.date === label);
-                      return item?.fullDate || label;
-                    }}
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="consumer_logins"
-                    name="Consumers"
-                    fill="#8884d8"
-                    stackId="stack"
-                  />
-                  <Bar
-                    dataKey="business_logins"
-                    name="Business"
-                    fill="#82ca9d"
-                    stackId="stack"
-                  />
-                  <Bar
-                    dataKey="influencer_logins"
-                    name="Influencers"
-                    fill="#ffc658"
-                    stackId="stack"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                No login data available for the last 7 days
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        {/* Daily Logins Chart */}
+        <Card className="w-full lg:col-span-2 min-w-0">
+          <CardHeader>
+            <CardTitle>Daily Logins (Last 7 Days)</CardTitle>
+            <CardDescription>
+              Login activity by user type
+              {loginAnalytics && (
+                <span className="ml-2 text-sm font-medium">
+                  Total: {loginAnalytics.totalLoginsLast7Days} logins
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div style={{ width: "100%", height: CHART_HEIGHT }}>
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+                  <BarChart
+                    data={chartData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip
+                      labelFormatter={(label) => {
+                        const item = chartData.find((d) => d.date === label);
+                        return item?.fullDate || label;
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      dataKey="consumer_logins"
+                      name="Consumers"
+                      fill="#3dd787"
+                      stackId="stack"
+                    />
+                    <Bar
+                      dataKey="business_logins"
+                      name="Business"
+                      fill="#639ce6"
+                      stackId="stack"
+                    />
+                    <Bar
+                      dataKey="influencer_logins"
+                      name="Influencers"
+                      fill="#8884D8"
+                      stackId="stack"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                  No login data available for the last 7 days
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent Activity */}
       <div className="admin-card">

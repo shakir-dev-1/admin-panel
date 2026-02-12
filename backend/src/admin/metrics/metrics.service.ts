@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { RecentUserDto } from '../dto/recent-user.dto.js';
 
 export interface LoginAnalyticsRow {
   date: Date;
@@ -353,5 +354,130 @@ export class MetricsService {
         },
       }),
     };
+  }
+
+  async getRecentUsersAllTypes(limit = 10): Promise<RecentUserDto[]> {
+    const recentUsers = await this.prisma.$queryRaw<RecentUserDto[]>`
+    WITH
+    -- Get only the most recent refresh token per consumer
+    latest_consumer_login AS (
+      SELECT DISTINCT ON ("userId")
+        "userId",
+        "lastLogin",
+        device,
+        "ipAddress"
+      FROM "refreshTokens"
+      WHERE "userId" IS NOT NULL
+      ORDER BY "userId", "lastLogin" DESC
+    ),
+
+    -- Get only the most recent refresh token per business user
+    latest_business_login AS (
+      SELECT DISTINCT ON ("businessUserId")
+        "businessUserId",
+        "lastLogin",
+        device,
+        "ipAddress"
+      FROM "refreshTokens"
+      WHERE "businessUserId" IS NOT NULL
+      ORDER BY "businessUserId", "lastLogin" DESC
+    ),
+
+    -- Get only the most recent refresh token per influencer
+    latest_influencer_login AS (
+      SELECT DISTINCT ON ("influencerId")
+        "influencerId",
+        "lastLogin",
+        device,
+        "ipAddress"
+      FROM "refreshTokens"
+      WHERE "influencerId" IS NOT NULL
+      ORDER BY "influencerId", "lastLogin" DESC
+    ),
+
+    -- Get one business name per consumer (via businessClients)
+    consumer_business AS (
+      SELECT DISTINCT ON (bc."userId")
+        bc."userId",
+        b.name AS business_name
+      FROM "businessClients" bc
+      JOIN "businesses" b ON b.id = bc."businessId"
+      ORDER BY bc."userId", bc."createdAt" DESC
+    ),
+
+    -- Get one business name per business user (via businessMembers)
+    business_user_business AS (
+      SELECT DISTINCT ON (bm."businessUserId")
+        bm."businessUserId",
+        b.name AS business_name
+      FROM "businessMembers" bm
+      JOIN "businesses" b ON b.id = bm."businessId"
+      ORDER BY bm."businessUserId", bm."createdAt" DESC
+    ),
+
+    recent_activities AS (
+      -- Consumers
+      SELECT
+        u.id,
+        CONCAT(COALESCE(u."firstName", ''), ' ', COALESCE(u."lastName", '')) AS name,
+        u.email,
+        u.username,
+        u."phoneNumber",
+        lcl."lastLogin"    AS "lastLoginAt",
+        lcl.device         AS "lastLoginDevice",
+        lcl."ipAddress"    AS "lastLoginIp",
+        cb.business_name   AS "businessName",
+        u."createdAt",
+        'consumer'::text   AS "userType"
+      FROM "users" u
+      LEFT JOIN latest_consumer_login lcl ON lcl."userId" = u.id
+      LEFT JOIN consumer_business      cb  ON cb."userId"  = u.id
+
+      UNION ALL
+
+      -- Business Users
+      SELECT
+        bu.id,
+        CONCAT(COALESCE(bu."firstName", ''), ' ', COALESCE(bu."lastName", '')) AS name,
+        bu.email,
+        bu.username,
+        bu."phoneNumber",
+        lbl."lastLogin"    AS "lastLoginAt",
+        lbl.device         AS "lastLoginDevice",
+        lbl."ipAddress"    AS "lastLoginIp",
+        bub.business_name  AS "businessName",
+        bu."createdAt",
+        'business'::text   AS "userType"
+      FROM "businessUsers" bu
+      LEFT JOIN latest_business_login  lbl ON lbl."businessUserId" = bu.id
+      LEFT JOIN business_user_business bub ON bub."businessUserId" = bu.id
+
+      UNION ALL
+
+      -- Influencers
+      SELECT
+        i.id,
+        i.name,
+        i.email,
+        i.username,
+        i."phoneNumber",
+        lil."lastLogin"    AS "lastLoginAt",
+        lil.device         AS "lastLoginDevice",
+        lil."ipAddress"    AS "lastLoginIp",
+        NULL               AS "businessName",
+        i."createdAt",
+        'influencer'::text AS "userType"
+      FROM "influencers" i
+      LEFT JOIN latest_influencer_login lil ON lil."influencerId" = i.id
+    )
+
+    SELECT *
+    FROM recent_activities
+    -- Users who have never logged in appear last; among those, newest accounts first
+    ORDER BY "lastLoginAt" DESC NULLS LAST, "createdAt" DESC
+    LIMIT ${limit}
+  `;
+
+    return recentUsers;
   }
 }

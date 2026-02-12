@@ -1,6 +1,7 @@
 import { Controller, Get, UseGuards, Query } from '@nestjs/common';
 import { MetricsService, LoginAnalyticsResponse } from './metrics.service.js';
 import { AdminGuard } from '../../auth/guards/admin.guard.js';
+import { RecentUserDto } from '../dto/recent-user.dto.js';
 
 @UseGuards(AdminGuard)
 @Controller('admin/metrics')
@@ -36,5 +37,13 @@ export class MetricsController {
       ...userMetrics,
       business: businessMetrics,
     };
+  }
+
+  @Get('users/recent')
+  getRecentUsersAllTypes(
+    @Query('limit') limit?: string,
+  ): Promise<RecentUserDto[]> {
+    const parsedLimit = limit ? parseInt(limit, 10) : 10;
+    return this.metricsService.getRecentUsersAllTypes(parsedLimit);
   }
 }

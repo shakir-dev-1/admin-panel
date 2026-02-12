@@ -190,7 +190,7 @@ export type BusinessUser = {
   }>;
 
   rewardReferred: Array<any>;
-}
+};
 
 export type PaginatedBusinessUserResponse = {
   data: BusinessUser[];
@@ -366,7 +366,10 @@ export function useRecentUsers(limit = 5) {
   return useQuery<RecentUser[]>({
     queryKey: queryKeys.users.recent(limit),
     queryFn: () =>
-      fetchWithAuthWrapper<User[]>(`/admin/users/recent?limit=${limit}`, token),
+      fetchWithAuthWrapper<RecentUser[]>(
+        `/admin/metrics/users/recent?limit=${limit}`,
+        token,
+      ),
     enabled: !!token,
     ...DEFAULT_QUERY_OPTIONS,
   });
@@ -378,7 +381,7 @@ export interface RecentUser {
   email: string;
   username: string | null;
   phoneNumber: string | null;
-  userType: 'consumer' | 'business' | 'influencer';
+  userType: "consumer" | "business" | "influencer";
   status: string;
   lastLoginAt: string | null;
   lastLoginDevice: string | null;

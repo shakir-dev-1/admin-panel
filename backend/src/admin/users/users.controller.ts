@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import type { UserSortField, SortOrder } from './users.service.js';
+import { Audit } from '../../audit/audit.decorator.js';
 
 // DTOs for request validation
 class ChangeEmailDto {
@@ -82,6 +83,7 @@ export class UsersController {
    * Force password reset for a user
    */
   @Post(':userId/reset-password')
+  @Audit('PASSWORD_RESET')
   async resetPassword(@Param('userId') userId: string) {
     return this.usersService.forcePasswordReset(userId);
   }
@@ -90,6 +92,7 @@ export class UsersController {
    * Change user's email
    */
   @Patch(':userId/email')
+  @Audit('EMAIL_CHANGE')
   async changeEmail(
     @Param('userId') userId: string,
     @Body() dto: ChangeEmailDto,
@@ -101,6 +104,7 @@ export class UsersController {
    * Change user's phone number
    */
   @Patch(':userId/phone')
+  @Audit('PHONE_CHANGE')
   async changePhone(
     @Param('userId') userId: string,
     @Body() dto: ChangePhoneDto,
@@ -112,6 +116,7 @@ export class UsersController {
    * Ban/Unban user
    */
   @Patch(':userId/status')
+  @Audit('STATUS_CHANGE')
   async changeStatus(
     @Param('userId') userId: string,
     @Body() dto: ChangeStatusDto,

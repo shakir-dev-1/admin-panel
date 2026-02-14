@@ -109,7 +109,7 @@ export default function BusinessUserDetail() {
     try {
       await changeEmail(user.id, newEmail, true);
       toast.success("Email changed from " + user.email + " to " + newEmail);
-      refetch();
+      // refetch();
       setShowEmailDialog(false);
       setNewEmail("");
     } catch (error) {
@@ -126,7 +126,7 @@ export default function BusinessUserDetail() {
       toast.success(
         "Phone changed from " + user.phoneNumber + " to " + newPhone,
       );
-      refetch();
+      // refetch();
       setShowPhoneDialog(false);
       setNewPhone("");
     } catch (error) {

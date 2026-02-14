@@ -21,6 +21,7 @@ import type {
 // import { RolesGuard } from '../auth/guards/roles.guard.js';
 // import { Roles } from '../auth/decorators/roles.decorator.js';
 import { AdminGuard } from '../../auth/guards/admin.guard.js';
+import { Audit } from '../../audit/audit.decorator.js';
 
 @UseGuards(AdminGuard) // Apply guard globally to this controller
 @Controller('admin/business')
@@ -60,6 +61,7 @@ export class BusinessUsersController {
    * Reset password for a business user
    */
   @Post('users/:id/reset-password')
+  @Audit('RESET_PASSWORD')
   @HttpCode(HttpStatus.OK)
   async resetBusinessUserPassword(@Param('id') id: string) {
     return this.businessUsersService.forceBusinessUserPasswordReset(id);
@@ -69,6 +71,7 @@ export class BusinessUsersController {
    * Change email for a business user
    */
   @Patch('users/:id/email')
+  @Audit('EMAIL_CHANGE') // This will be logged
   @HttpCode(HttpStatus.OK)
   async changeBusinessUserEmail(
     @Param('id') id: string,
@@ -85,6 +88,7 @@ export class BusinessUsersController {
    * Change phone number for a business user
    */
   @Patch('users/:id/phone')
+  @Audit('PHONE_CHANGE')
   @HttpCode(HttpStatus.OK)
   async changeBusinessUserPhone(
     @Param('id') id: string,
@@ -101,6 +105,7 @@ export class BusinessUsersController {
    * Change email confirmation status for a business user
    */
   @Patch('users/:id/email-confirmation')
+  @Audit('CHANGE_EMAIL_CONFIRMATION_STATUS')
   @HttpCode(HttpStatus.OK)
   async changeBusinessUserEmailConfirmation(
     @Param('id') id: string,

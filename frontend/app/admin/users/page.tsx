@@ -216,6 +216,9 @@ function UsersTable({
         if (statusFilter === "INACTIVE") {
           return status === "INACTIVE";
         }
+        if (statusFilter === "DISABLED") {
+          return status === "DISABLED" || status === "BANNED";
+        }
         return status === statusFilter;
       });
     }
@@ -685,11 +688,11 @@ export default function UsersPage() {
     setPage(1);
   };
 
-  console.log("Data from cache:", {
-    consumers: consumers?.length || 0,
-    businessUsers: businessUsers?.length || 0,
-    influencers: influencers?.length || 0,
-  });
+  // console.log("Data from cache:", {
+  //   consumers: consumers?.length || 0,
+  //   businessUsers: businessUsers?.length || 0,
+  //   influencers: influencers?.length || 0,
+  // });
 
   return (
     <div className="space-y-6">

@@ -4,8 +4,8 @@ import { ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Loader2, AlertCircle, LogIn, Home } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from "@/app/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
 
 interface ProtectedRouteProps {
   children: ReactNode;

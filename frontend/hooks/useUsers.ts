@@ -749,6 +749,7 @@ export function useUsersManagement() {
 
     // Invalidate influencer cache
     queryClient.invalidateQueries({ queryKey: queryKeys.users.influencers() });
+
     queryClient.invalidateQueries({
       queryKey: queryKeys.users.influencer(influencerId),
     });

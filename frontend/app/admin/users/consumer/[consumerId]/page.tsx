@@ -191,7 +191,7 @@ export default function UserDetail() {
       toast.success("Email changed from " + user.email + " to " + newEmail);
 
       // Refetch to get updated data (cache will be invalidated by the hook)
-      refetch();
+      // refetch();
 
       setShowEmailDialog(false);
       setNewEmail("");
@@ -212,7 +212,7 @@ export default function UserDetail() {
       );
 
       // Refetch to get updated data (cache will be invalidated by the hook)
-      refetch();
+      // refetch();
 
       setShowPhoneDialog(false);
       setNewPhone("");
@@ -233,7 +233,7 @@ export default function UserDetail() {
       );
 
       // Refetch to get updated data (cache will be invalidated by the hook)
-      refetch();
+      // refetch();
 
       setShowStatusDialog(false);
     } catch (error) {

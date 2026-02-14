@@ -1,9 +1,28 @@
-'use client';
+"use client";
 
 // src/hooks/useAuditLogs.ts
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { fetchWithAuth } from '@/lib/api';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { fetchWithAuth } from "@/lib/api";
+
+// ✅ Match the AuditMetadata from the interceptor
+export interface AuditMetadata {
+  method: string;
+  path: string;
+  statusCode: number;
+  duration: number;
+  query?: Record<string, string | string[]>;
+  error?: string;
+  stack?: string;
+  timestamp: string;
+  requestBody?: Record<string, unknown> | null;
+  responseSummary?: {
+    type: string;
+    count?: number;
+    truncated?: boolean;
+  };
+  [key: string]: unknown; // Keep index signature for flexibility
+}
 
 export interface AuditLog {
   id: string;
@@ -15,11 +34,12 @@ export interface AuditLog {
   } | null;
   targetUser: {
     id: string;
-    name: string;
-    email: string;
-    userType: string;
+    // Optional: you can keep these as optional if you want to add them later
+    name?: string;
+    email?: string;
+    userType?: string;
   } | null;
-  metadata: Record<string, any>;
+  metadata: AuditMetadata | null;
 }
 
 export interface AuditSummary {
@@ -46,7 +66,7 @@ export interface AuditLogsResponse {
   };
 }
 
-export function useAuditLogs(params?: {
+export interface AuditLogFilters {
   page?: number;
   limit?: number;
   search?: string;
@@ -55,80 +75,123 @@ export function useAuditLogs(params?: {
   targetUserId?: string;
   startDate?: string;
   endDate?: string;
-}) {
-  const { token } = useAuth();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const fetchLogs = async () => {
-      try {
-        setLoading(true);
-        
-        const queryParams = new URLSearchParams();
-        if (params?.page) queryParams.append('page', params.page.toString());
-        if (params?.limit) queryParams.append('limit', params.limit.toString());
-        if (params?.search) queryParams.append('search', params.search);
-        if (params?.actionType) queryParams.append('actionType', params.actionType);
-        if (params?.adminId) queryParams.append('adminId', params.adminId);
-        if (params?.targetUserId) queryParams.append('targetUserId', params.targetUserId);
-        if (params?.startDate) queryParams.append('startDate', params.startDate);
-        if (params?.endDate) queryParams.append('endDate', params.endDate);
-
-        const response = await fetchWithAuth<AuditLogsResponse>(
-          `/admin/audit/logs?${queryParams.toString()}`,
-          token
-        );
-
-        setLogs(response.data);
-        setPagination(response.pagination);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('Error fetching audit logs:', err);
-        setError(err.message || 'Failed to load audit logs');
-        setLoading(false);
-      }
-    };
-
-    fetchLogs();
-  }, [token, JSON.stringify(params)]); // Stringify for deep comparison
-
-  return { logs, pagination, loading, error };
 }
 
+// Query keys for cache management
+export const auditQueryKeys = {
+  all: ["audit"] as const,
+  logs: (filters?: AuditLogFilters) =>
+    [...auditQueryKeys.all, "logs", filters] as const,
+  summary: () => [...auditQueryKeys.all, "summary"] as const,
+  log: (id: string) => [...auditQueryKeys.all, "log", id] as const,
+};
+
+const DEFAULT_AUDIT_OPTIONS = {
+  staleTime: 5 * 60 * 1000, // 5 minutes
+  gcTime: 10 * 60 * 1000, // 10 minutes
+  refetchOnWindowFocus: false,
+  retry: 1,
+};
+
+// Helper function to build query string
+const buildQueryString = (params?: AuditLogFilters): string => {
+  if (!params) return "";
+
+  const queryParams = new URLSearchParams();
+  if (params.page) queryParams.append("page", params.page.toString());
+  if (params.limit) queryParams.append("limit", params.limit.toString());
+  if (params.search) queryParams.append("search", params.search);
+  if (params.actionType) queryParams.append("actionType", params.actionType);
+  if (params.adminId) queryParams.append("adminId", params.adminId);
+  if (params.targetUserId)
+    queryParams.append("targetUserId", params.targetUserId);
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+
+  return queryParams.toString();
+};
+
+// Helper function to fetch with auth
+const fetchWithAuthWrapper = async <T>(
+  endpoint: string,
+  token: string | null,
+): Promise<T> => {
+  if (!token) {
+    throw new Error("No authentication token");
+  }
+  return fetchWithAuth<T>(endpoint, token);
+};
+
+// ✅ Type guard to check if metadata exists and has expected shape
+export function isValidAuditMetadata(
+  metadata: unknown,
+): metadata is AuditMetadata {
+  return (
+    metadata !== null &&
+    typeof metadata === "object" &&
+    metadata !== null &&
+    "method" in metadata &&
+    "path" in metadata &&
+    "statusCode" in metadata &&
+    "duration" in metadata &&
+    "timestamp" in metadata
+  );
+}
+
+// Main hook for audit logs with React Query
+export function useAuditLogs(filters?: AuditLogFilters) {
+  const { token } = useAuth();
+
+  const queryString = buildQueryString(filters);
+  const endpoint = `/admin/audit/logs${queryString ? `?${queryString}` : ""}`;
+
+  return useQuery<AuditLogsResponse>({
+    queryKey: auditQueryKeys.logs(filters),
+    queryFn: () => fetchWithAuthWrapper<AuditLogsResponse>(endpoint, token),
+    enabled: !!token,
+    ...DEFAULT_AUDIT_OPTIONS,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+// Hook for audit summary with React Query
 export function useAuditSummary() {
   const { token } = useAuth();
-  const [summary, setSummary] = useState<AuditSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
+  return useQuery<AuditSummary>({
+    queryKey: auditQueryKeys.summary(),
+    queryFn: () =>
+      fetchWithAuthWrapper<AuditSummary>("/admin/audit/summary", token),
+    enabled: !!token,
+    ...DEFAULT_AUDIT_OPTIONS,
+    staleTime: 15 * 60 * 1000,
+  });
+}
 
-    const fetchSummary = async () => {
-      try {
-        setLoading(true);
-        const data = await fetchWithAuth<AuditSummary>('/admin/audit/summary', token);
-        setSummary(data);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('Error fetching audit summary:', err);
-        setError(err.message || 'Failed to load audit summary');
-        setLoading(false);
-      }
-    };
+// Hook to manually invalidate audit cache
+export function useInvalidateAuditCache() {
+  const queryClient = useQueryClient();
 
-    fetchSummary();
-  }, [token]);
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: auditQueryKeys.all });
+  };
 
-  return { summary, loading, error };
+  const invalidateLogs = () => {
+    queryClient.invalidateQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === "audit" &&
+        query.queryKey[1] === "logs",
+    });
+  };
+
+  const invalidateSummary = () => {
+    queryClient.invalidateQueries({ queryKey: auditQueryKeys.summary() });
+  };
+
+  return {
+    invalidateAll,
+    invalidateLogs,
+    invalidateSummary,
+  };
 }

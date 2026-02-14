@@ -134,7 +134,7 @@ export default function InfluencerDetail() {
     data: influencer,
     isLoading,
     error,
-    refetch,
+    // refetch,
   } = useInfluencerById(influencerId);
 
   const { token } = useAuth();
@@ -199,7 +199,7 @@ export default function InfluencerDetail() {
       toast.success(
         "Email changed from " + influencer.email + " to " + newEmail,
       );
-      refetch(); // Refetch influencer data to get updated email and status
+      // refetch(); // Refetch influencer data to get updated email and status
 
       setShowEmailDialog(false);
       setNewEmail("");
@@ -219,7 +219,7 @@ export default function InfluencerDetail() {
         "Phone changed from " + influencer.phoneNumber + " to " + newPhone,
       );
 
-      refetch(); // Refetch influencer data to get updated email and status
+      // refetch(); // Refetch influencer data to get updated email and status
       setShowPhoneDialog(false);
       setNewPhone("");
     } catch (error) {

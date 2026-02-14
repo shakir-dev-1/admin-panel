@@ -21,14 +21,14 @@ import type { RecentUser } from "@/hooks/useUsers";
 import { formatDistanceToNow, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { UserTypeBadge } from "@/app/components/admin/UserTypeBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-} from "@/components/ui/card";
+} from "@/app/components/ui/card";
 import {
   BarChart,
   Bar,
@@ -46,22 +46,20 @@ import {
 const COLORS = ["#00C49F", "#0088FE", "#8884D8", "#FFBB28", "#FF8042"];
 
 // ─── Chart height constant ────────────────────────────────────────────────────
-// ResponsiveContainer only needs width="100%"; give it a fixed pixel height so
-// Recharts never sees -1 dimensions from an unresolved percentage chain.
 const CHART_HEIGHT = 350;
 
 export default function Dashboard() {
-  // Single call for all metrics
+  // Single call for all metrics - now using React Query
   const {
-    metrics,
-    loading: metricsLoading,
+    data: metrics,
+    isLoading: metricsLoading,
     error: metricsError,
   } = useAllMetrics();
 
-  // Login analytics for last 7 days
+  // Login analytics for last 7 days - now using React Query
   const {
-    analytics: loginAnalytics,
-    loading: analyticsLoading,
+    data: loginAnalytics,
+    isLoading: analyticsLoading,
     error: analyticsError,
   } = useLoginAnalytics(7);
 

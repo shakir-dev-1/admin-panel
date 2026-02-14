@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api";
 
@@ -80,237 +80,241 @@ export type AllMetrics = DashboardStats & {
   business: BusinessMetrics;
 };
 
+// Add query keys for metrics
+export const queryKeys = {
+  metrics: {
+    all: ["metrics"] as const,
+    dashboard: () => [...queryKeys.metrics.all, "dashboard"] as const,
+    business: () => [...queryKeys.metrics.all, "business"] as const,
+    logins: (days: number) =>
+      [...queryKeys.metrics.all, "logins", { days }] as const,
+    recentUsers: (limit: number) =>
+      [...queryKeys.metrics.all, "recent-users", { limit }] as const,
+  },
+};
+
+const DEFAULT_METRICS_OPTIONS = {
+  staleTime: 5 * 60 * 1000, // 5 minutes - metrics don't change that frequently
+  gcTime: 30 * 60 * 1000, // 30 minutes cache
+  refetchOnWindowFocus: false,
+  retry: 1,
+  refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes in the background
+};
+
+// Helper function to fetch with auth
+const fetchWithAuthWrapper = async <T>(
+  endpoint: string,
+  token: string | null,
+): Promise<T> => {
+  if (!token) {
+    throw new Error("No authentication token");
+  }
+  return fetchWithAuth<T>(endpoint, token);
+};
+
 // Main metrics hook - GET /admin/metrics
 export function useMetrics() {
   const { token } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
+  return useQuery<DashboardStats>({
+    queryKey: queryKeys.metrics.dashboard(),
+    queryFn: async () => {
+      const data = await fetchWithAuthWrapper<any>("/admin/metrics", token);
 
-    fetchWithAuth("/admin/metrics", token)
-      .then((data: any) => {
-        console.log("Metrics data:", data);
+      return {
+        // Total counts
+        totalUsers: data.totalUsers ?? 0,
+        totalConsumers: data.totalConsumers ?? 0,
+        totalBusinessUsers: data.totalBusinessUsers ?? 0,
+        totalInfluencers: data.totalInfluencers ?? 0,
 
-        // The backend returns the exact structure we need
-        const mapped: DashboardStats = {
-          // Total counts
-          totalUsers: data.totalUsers ?? 0,
-          totalConsumers: data.totalConsumers ?? 0,
-          totalBusinessUsers: data.totalBusinessUsers ?? 0,
-          totalInfluencers: data.totalInfluencers ?? 0,
+        // Active users
+        activeUsers: data.activeUsers ?? 0,
+        activeConsumers: data.activeConsumers ?? 0,
+        activeBusinessUsers: data.activeBusinessUsers ?? 0,
+        activeInfluencers: data.activeInfluencers ?? 0,
 
-          // Active users
-          activeUsers: data.activeUsers ?? 0,
-          activeConsumers: data.activeConsumers ?? 0,
-          activeBusinessUsers: data.activeBusinessUsers ?? 0,
-          activeInfluencers: data.activeInfluencers ?? 0,
+        // Inactive/banned
+        inactiveUsers: data.inactiveUsers ?? 0,
+        bannedConsumers: data.bannedConsumers ?? 0,
 
-          // Inactive/banned
-          inactiveUsers: data.inactiveUsers ?? 0,
-          bannedConsumers: data.bannedConsumers ?? 0,
+        // Login metrics
+        dailyLogins: data.dailyLogins ?? 0,
+        dailyConsumerLogins: data.dailyConsumerLogins ?? 0,
+        dailyBusinessLogins: data.dailyBusinessLogins ?? 0,
+        dailyInfluencerLogins: data.dailyInfluencerLogins ?? 0,
 
-          // Login metrics
-          dailyLogins: data.dailyLogins ?? 0,
-          dailyConsumerLogins: data.dailyConsumerLogins ?? 0,
-          dailyBusinessLogins: data.dailyBusinessLogins ?? 0,
-          dailyInfluencerLogins: data.dailyInfluencerLogins ?? 0,
+        // Never logged in
+        neverLoggedIn: data.neverLoggedIn ?? 0,
+        consumersNeverLoggedIn: data.consumersNeverLoggedIn ?? 0,
+        businessUsersNeverLoggedIn: data.businessUsersNeverLoggedIn ?? 0,
+        influencersNeverLoggedIn: data.influencersNeverLoggedIn ?? 0,
 
-          // Never logged in
-          neverLoggedIn: data.neverLoggedIn ?? 0,
-          consumersNeverLoggedIn: data.consumersNeverLoggedIn ?? 0,
-          businessUsersNeverLoggedIn: data.businessUsersNeverLoggedIn ?? 0,
-          influencersNeverLoggedIn: data.influencersNeverLoggedIn ?? 0,
+        // Email confirmation
+        emailConfirmed: data.emailConfirmed ?? 0,
+        consumersEmailConfirmed: data.consumersEmailConfirmed ?? 0,
+        businessUsersEmailConfirmed: data.businessUsersEmailConfirmed ?? 0,
+        influencersEmailConfirmed: data.influencersEmailConfirmed ?? 0,
 
-          // Email confirmation
-          emailConfirmed: data.emailConfirmed ?? 0,
-          consumersEmailConfirmed: data.consumersEmailConfirmed ?? 0,
-          businessUsersEmailConfirmed: data.businessUsersEmailConfirmed ?? 0,
-          influencersEmailConfirmed: data.influencersEmailConfirmed ?? 0,
+        // 2FA adoption
+        twoFactorEnabled: data.twoFactorEnabled ?? 0,
+        consumers2FAEnabled: data.consumers2FAEnabled ?? 0,
+        businessUsers2FAEnabled: data.businessUsers2FAEnabled ?? 0,
+        influencers2FAEnabled: data.influencers2FAEnabled ?? 0,
 
-          // 2FA adoption
-          twoFactorEnabled: data.twoFactorEnabled ?? 0,
-          consumers2FAEnabled: data.consumers2FAEnabled ?? 0,
-          businessUsers2FAEnabled: data.businessUsers2FAEnabled ?? 0,
-          influencers2FAEnabled: data.influencers2FAEnabled ?? 0,
-
-          // Distributions
-          userTypeDistribution: data.userTypeDistribution ?? [],
-          consumerStatusDistribution: data.consumerStatusDistribution ?? [],
-        };
-
-        setStats(mapped);
-        setLoading(false);
-        setError(null);
-      })
-      .catch((err: any) => {
-        console.error("Metrics error:", err);
-        const errorMessage =
-          err?.message || err?.toString() || "Unknown error occurred";
-        setError(errorMessage);
-        setLoading(false);
-      });
-  }, [token]);
-
-  return { stats, loading, error };
+        // Distributions
+        userTypeDistribution: data.userTypeDistribution ?? [],
+        consumerStatusDistribution: data.consumerStatusDistribution ?? [],
+      };
+    },
+    enabled: !!token,
+    ...DEFAULT_METRICS_OPTIONS,
+  });
 }
 
 // Business metrics hook - GET /admin/metrics/business
 export function useBusinessMetrics() {
   const { token } = useAuth();
-  const [metrics, setMetrics] = useState<BusinessMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
+  return useQuery<BusinessMetrics>({
+    queryKey: queryKeys.metrics.business(),
+    queryFn: async () => {
+      const data = await fetchWithAuthWrapper<any>(
+        "/admin/metrics/business",
+        token,
+      );
 
-    fetchWithAuth("/admin/metrics/business", token)
-      .then((data: any) => {
-        console.log("Business metrics:", data);
-
-        const mapped: BusinessMetrics = {
-          totalBusinesses: data.totalBusinesses ?? 0,
-          verifiedBusinesses: data.verifiedBusinesses ?? 0,
-          businessesWithSubscriptions: data.businessesWithSubscriptions ?? 0,
-          businessesWithPayoutInfo: data.businessesWithPayoutInfo ?? 0,
-          verificationRate: data.verificationRate ?? 0,
-          subscriptionRate: data.subscriptionRate ?? 0,
-          payoutInfoRate: data.payoutInfoRate ?? 0,
-        };
-
-        setMetrics(mapped);
-        setLoading(false);
-        setError(null);
-      })
-      .catch((err: any) => {
-        console.error("Business metrics error:", err);
-        const errorMessage =
-          err?.message || err?.toString() || "Unknown error occurred";
-        setError(errorMessage);
-        setLoading(false);
-      });
-  }, [token]);
-
-  return { metrics, loading, error };
+      return {
+        totalBusinesses: data.totalBusinesses ?? 0,
+        verifiedBusinesses: data.verifiedBusinesses ?? 0,
+        businessesWithSubscriptions: data.businessesWithSubscriptions ?? 0,
+        businessesWithPayoutInfo: data.businessesWithPayoutInfo ?? 0,
+        verificationRate: data.verificationRate ?? 0,
+        subscriptionRate: data.subscriptionRate ?? 0,
+        payoutInfoRate: data.payoutInfoRate ?? 0,
+      };
+    },
+    enabled: !!token,
+    ...DEFAULT_METRICS_OPTIONS,
+  });
 }
 
 // Login analytics hook - GET /admin/metrics/logins?days={days}
 export function useLoginAnalytics(days: number = 7) {
   const { token } = useAuth();
-  const [analytics, setAnalytics] = useState<LoginAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
+  return useQuery<LoginAnalytics>({
+    queryKey: queryKeys.metrics.logins(days),
+    queryFn: async () => {
+      const data = await fetchWithAuthWrapper<any>(
+        `/admin/metrics/logins?days=${days}`,
+        token,
+      );
 
-    fetchWithAuth(`/admin/metrics/logins?days=${days}`, token)
-      .then((data: any) => {
-        console.log("Login analytics:", data);
-
-        setAnalytics({
-          loginsByDay: data.loginsByDay ?? [],
-          totalLoginsLast7Days: data.totalLoginsLast7Days ?? 0,
-        });
-        setLoading(false);
-        setError(null);
-      })
-      .catch((err: any) => {
-        console.error("Login analytics error:", err);
-        const errorMessage =
-          err?.message || err?.toString() || "Unknown error occurred";
-        setError(errorMessage);
-        setLoading(false);
-      });
-  }, [token, days]);
-
-  return { analytics, loading, error };
+      return {
+        loginsByDay: data.loginsByDay ?? [],
+        totalLoginsLast7Days: data.totalLoginsLast7Days ?? 0,
+      };
+    },
+    enabled: !!token,
+    ...DEFAULT_METRICS_OPTIONS,
+  });
 }
 
 // All metrics combined hook - GET /admin/metrics/all
 export function useAllMetrics() {
   const { token } = useAuth();
-  const [metrics, setMetrics] = useState<AllMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
+  return useQuery<AllMetrics>({
+    queryKey: queryKeys.metrics.all,
+    queryFn: async () => {
+      const data = await fetchWithAuthWrapper<any>("/admin/metrics/all", token);
 
-    fetchWithAuth("/admin/metrics/all", token)
-      .then((data: any) => {
-        console.log("All metrics:", data);
+      return {
+        // Dashboard stats - from the spread of userMetrics
+        totalUsers: data.totalUsers ?? 0,
+        totalConsumers: data.totalConsumers ?? 0,
+        totalBusinessUsers: data.totalBusinessUsers ?? 0,
+        totalInfluencers: data.totalInfluencers ?? 0,
+        activeUsers: data.activeUsers ?? 0,
+        activeConsumers: data.activeConsumers ?? 0,
+        activeBusinessUsers: data.activeBusinessUsers ?? 0,
+        activeInfluencers: data.activeInfluencers ?? 0,
+        inactiveUsers: data.inactiveUsers ?? 0,
+        bannedConsumers: data.bannedConsumers ?? 0,
+        dailyLogins: data.dailyLogins ?? 0,
+        dailyConsumerLogins: data.dailyConsumerLogins ?? 0,
+        dailyBusinessLogins: data.dailyBusinessLogins ?? 0,
+        dailyInfluencerLogins: data.dailyInfluencerLogins ?? 0,
+        neverLoggedIn: data.neverLoggedIn ?? 0,
+        consumersNeverLoggedIn: data.consumersNeverLoggedIn ?? 0,
+        businessUsersNeverLoggedIn: data.businessUsersNeverLoggedIn ?? 0,
+        influencersNeverLoggedIn: data.influencersNeverLoggedIn ?? 0,
+        emailConfirmed: data.emailConfirmed ?? 0,
+        consumersEmailConfirmed: data.consumersEmailConfirmed ?? 0,
+        businessUsersEmailConfirmed: data.businessUsersEmailConfirmed ?? 0,
+        influencersEmailConfirmed: data.influencersEmailConfirmed ?? 0,
+        twoFactorEnabled: data.twoFactorEnabled ?? 0,
+        consumers2FAEnabled: data.consumers2FAEnabled ?? 0,
+        businessUsers2FAEnabled: data.businessUsers2FAEnabled ?? 0,
+        influencers2FAEnabled: data.influencers2FAEnabled ?? 0,
+        userTypeDistribution: data.userTypeDistribution ?? [],
+        consumerStatusDistribution: data.consumerStatusDistribution ?? [],
 
-        const mapped: AllMetrics = {
-          // Dashboard stats - from the spread of userMetrics
-          totalUsers: data.totalUsers ?? 0,
-          totalConsumers: data.totalConsumers ?? 0,
-          totalBusinessUsers: data.totalBusinessUsers ?? 0,
-          totalInfluencers: data.totalInfluencers ?? 0,
-          activeUsers: data.activeUsers ?? 0,
-          activeConsumers: data.activeConsumers ?? 0,
-          activeBusinessUsers: data.activeBusinessUsers ?? 0,
-          activeInfluencers: data.activeInfluencers ?? 0,
-          inactiveUsers: data.inactiveUsers ?? 0,
-          bannedConsumers: data.bannedConsumers ?? 0,
-          dailyLogins: data.dailyLogins ?? 0,
-          dailyConsumerLogins: data.dailyConsumerLogins ?? 0,
-          dailyBusinessLogins: data.dailyBusinessLogins ?? 0,
-          dailyInfluencerLogins: data.dailyInfluencerLogins ?? 0,
-          neverLoggedIn: data.neverLoggedIn ?? 0,
-          consumersNeverLoggedIn: data.consumersNeverLoggedIn ?? 0,
-          businessUsersNeverLoggedIn: data.businessUsersNeverLoggedIn ?? 0,
-          influencersNeverLoggedIn: data.influencersNeverLoggedIn ?? 0,
-          emailConfirmed: data.emailConfirmed ?? 0,
-          consumersEmailConfirmed: data.consumersEmailConfirmed ?? 0,
-          businessUsersEmailConfirmed: data.businessUsersEmailConfirmed ?? 0,
-          influencersEmailConfirmed: data.influencersEmailConfirmed ?? 0,
-          twoFactorEnabled: data.twoFactorEnabled ?? 0,
-          consumers2FAEnabled: data.consumers2FAEnabled ?? 0,
-          businessUsers2FAEnabled: data.businessUsers2FAEnabled ?? 0,
-          influencers2FAEnabled: data.influencers2FAEnabled ?? 0,
-          userTypeDistribution: data.userTypeDistribution ?? [],
-          consumerStatusDistribution: data.consumerStatusDistribution ?? [],
+        // Business metrics - nested under business object
+        business: {
+          totalBusinesses: data.business?.totalBusinesses ?? 0,
+          verifiedBusinesses: data.business?.verifiedBusinesses ?? 0,
+          businessesWithSubscriptions:
+            data.business?.businessesWithSubscriptions ?? 0,
+          businessesWithPayoutInfo:
+            data.business?.businessesWithPayoutInfo ?? 0,
+          verificationRate: data.business?.verificationRate ?? 0,
+          subscriptionRate: data.business?.subscriptionRate ?? 0,
+          payoutInfoRate: data.business?.payoutInfoRate ?? 0,
+        },
+      };
+    },
+    enabled: !!token,
+    ...DEFAULT_METRICS_OPTIONS,
+  });
+}
 
-          // Business metrics - nested under business object
-          business: {
-            totalBusinesses: data.business?.totalBusinesses ?? 0,
-            verifiedBusinesses: data.business?.verifiedBusinesses ?? 0,
-            businessesWithSubscriptions:
-              data.business?.businessesWithSubscriptions ?? 0,
-            businessesWithPayoutInfo:
-              data.business?.businessesWithPayoutInfo ?? 0,
-            verificationRate: data.business?.verificationRate ?? 0,
-            subscriptionRate: data.business?.subscriptionRate ?? 0,
-            payoutInfoRate: data.business?.payoutInfoRate ?? 0,
-          },
-        };
+// Optional: Hook to manually invalidate metrics cache
+export function useInvalidateMetrics() {
+  const queryClient = useQueryClient();
 
-        setMetrics(mapped);
-        setLoading(false);
-        setError(null);
-      })
-      .catch((err: any) => {
-        console.error("All metrics error:", err);
-        const errorMessage =
-          err?.message || err?.toString() || "Unknown error occurred";
-        setError(errorMessage);
-        setLoading(false);
+  const invalidateAllMetrics = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.metrics.all });
+  };
+
+  const invalidateDashboard = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.metrics.dashboard() });
+  };
+
+  const invalidateBusinessMetrics = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.metrics.business() });
+  };
+
+  const invalidateLoginAnalytics = (days?: number) => {
+    if (days) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.metrics.logins(days),
       });
-  }, [token]);
+    } else {
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === "metrics" && query.queryKey[1] === "logins",
+      });
+    }
+  };
 
-  return { metrics, loading, error };
+  return {
+    invalidateAllMetrics,
+    invalidateDashboard,
+    invalidateBusinessMetrics,
+    invalidateLoginAnalytics,
+  };
 }
 
 // For backwards compatibility

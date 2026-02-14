@@ -24,21 +24,21 @@ export interface AuditLogResponse {
 }
 
 // Define the admin type for the relation
-interface AdminUser {
-  id: string;
-  email: string;
-}
+// interface AdminUser {
+//   id: string;
+//   email: string;
+// }
 
 // Define the return type with proper relations
-interface AdminAuditLogWithRelations {
-  id: string;
-  actionType: string;
-  createdAt: Date;
-  metadata: Prisma.JsonValue | null;
-  adminId: string | null;
-  targetUserId: string | null;
-  admin: AdminUser | null;
-}
+// interface AdminAuditLogWithRelations {
+//   id: string;
+//   actionType: string;
+//   createdAt: Date;
+//   metadata: Prisma.JsonValue | null;
+//   adminId: string | null;
+//   targetUserId: string | null;
+//   admin: AdminUser | null;
+// }
 
 @Injectable()
 export class AuditService {
@@ -77,6 +77,13 @@ export class AuditService {
             mode: Prisma.QueryMode.insensitive,
           },
         },
+        // Also search in targetUserId if it's a string
+        {
+          targetUserId: {
+            contains: search,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        },
       ];
     }
 
@@ -106,69 +113,25 @@ export class AuditService {
     const total = await this.prisma.adminAuditLog.count({ where });
 
     // Get paginated data with proper typing
-    const logs =
-      await this.prisma.adminAuditLog.findMany<Prisma.AdminAuditLogFindManyArgs>(
-        {
-          where,
-          include: {
-            admin: {
-              select: {
-                id: true,
-                email: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          skip,
-          take: limit,
-        },
-      );
-
-    // If we need user information, we need to fetch it separately
-    const targetUserIds = logs
-      .map((log) => log.targetUserId)
-      .filter((id): id is string => id !== null);
-
-    let users: Record<
-      string,
-      { id: string; email: string; name: string | null }
-    > = {};
-
-    if (targetUserIds.length > 0) {
-      const fetchedUsers = await this.prisma.user.findMany({
-        where: {
-          id: {
-            in: targetUserIds,
+    const logs = await this.prisma.adminAuditLog.findMany({
+      where,
+      include: {
+        admin: {
+          select: {
+            id: true,
+            email: true,
           },
         },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-        },
-      });
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
+    });
 
-      users = fetchedUsers.reduce(
-        (acc, user) => {
-          acc[user.id] = {
-            id: user.id,
-            email: user.email,
-            name:
-              user.firstName && user.lastName
-                ? `${user.firstName} ${user.lastName}`.trim()
-                : user.email,
-          };
-          return acc;
-        },
-        {} as Record<string, any>,
-      );
-    }
-
-    // Format the response with proper typing
-    const formattedLogs = (logs as AdminAuditLogWithRelations[]).map((log) => ({
+    // Format the response - just return targetUserId directly without fetching user info
+    const formattedLogs = logs.map((log) => ({
       id: log.id,
       actionType: log.actionType,
       createdAt: log.createdAt,
@@ -178,10 +141,7 @@ export class AuditService {
             email: log.admin.email,
           }
         : null,
-      targetUser:
-        log.targetUserId && users[log.targetUserId]
-          ? users[log.targetUserId]
-          : null,
+      targetUser: log.targetUserId ? { id: log.targetUserId } : null, // Just return the ID
       metadata: log.metadata,
     }));
 

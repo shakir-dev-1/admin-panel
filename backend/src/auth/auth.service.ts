@@ -6,6 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 
 interface AdminPayload {
   id: string | number;
+  email: string;
 }
 
 export type SafeAdmin = Omit<AdminPayload, 'password'>;
@@ -69,6 +70,11 @@ export class AuthService {
         secret: process.env.ADMIN_JWT_SECRET,
         expiresIn: '24h',
       }),
+      admin: {
+        // Add admin info to response
+        id: admin.id,
+        email: admin.email,
+      },
     };
   }
 }

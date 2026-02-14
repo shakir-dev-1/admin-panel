@@ -8,47 +8,21 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
+import { Reflector } from '@nestjs/core'; // Add this import
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-
-// Define specific response types
-// type ArrayResponse = {
-//   count: number;
-//   type: 'array';
-//   sample?: Record<string, unknown>[];
-// };
-
-// type TruncatedResponse = {
-//   truncated: boolean;
-//   length: number;
-//   originalLength?: number;
-//   preview?: string;
-// };
-
-// type PrimitiveResponse = {
-//   value: string;
-//   type?: 'string' | 'number' | 'boolean';
-// };
-
-// type SanitizedResponse =
-//   | Record<string, unknown>
-//   | ArrayResponse
-//   | TruncatedResponse
-//   | PrimitiveResponse
-//   | null
-//   | undefined;
+import { AUDIT_KEY } from './audit.decorator.js';
 
 // Simplified metadata structure - only store what's needed for audit
 interface AuditMetadata extends Record<string, any> {
   method: string;
-  path: string; // Store path without query params
+  path: string;
   statusCode: number;
   duration: number;
   query?: Record<string, string | string[]>;
   error?: string;
   stack?: string;
   timestamp: string;
-  // Only store essential request/response info
   requestBody?: Record<string, unknown> | null;
   responseSummary?: {
     type: string;
@@ -60,7 +34,7 @@ interface AuditMetadata extends Record<string, any> {
 interface LogActionData {
   adminId?: string;
   actionType: string;
-  targetUserId?: string; // Add targetUserId
+  targetUserId?: string;
   metadata: AuditMetadata;
 }
 
@@ -86,7 +60,10 @@ export class AuditInterceptor implements NestInterceptor {
     '/favicon.ico',
   ];
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private reflector: Reflector, // Inject Reflector
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context
@@ -99,16 +76,25 @@ export class AuditInterceptor implements NestInterceptor {
       return next.handle();
     }
 
+    // Get audit action from decorator - properly typed
+    const auditAction = this.reflector.get<string>(
+      AUDIT_KEY,
+      context.getHandler(),
+    );
+
+    if (!auditAction) {
+      return next.handle(); // Skip if no audit metadata
+    }
+
     const adminId = request.user?.adminId || request.user?.id;
     const method = request.method;
-    const path = request.path; // Store path without query params
-    // const fullUrl = request.url;
+    const path = request.path;
     const body = this.sanitizeBody(request.body as Record<string, unknown>);
     const params = request.params as Record<string, string>;
     const query = request.query as Record<string, string | string[]>;
 
     // Extract targetUserId from various possible locations
-    const targetUserId = this.extractTargetUserId(params, body);
+    const targetUserId = this.extractTargetUserId(params, body, path);
 
     const startTime = Date.now();
 
@@ -118,25 +104,28 @@ export class AuditInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           const statusCode = response.statusCode;
 
-          try {
-            await this.logAction({
-              adminId,
-              targetUserId,
-              actionType: `${method} ${path}`, // Use path, not full URL
-              metadata: {
-                method,
-                path,
-                statusCode,
-                duration,
-                query: Object.keys(query).length > 0 ? query : undefined,
-                requestBody: body,
-                responseSummary: this.getResponseSummary(data),
-                timestamp: new Date().toISOString(),
-              },
-            });
-          } catch (error) {
-            const err = error as Error;
-            this.logger.error(`Failed to log audit: ${err.message}`);
+          // Only log successful actions (2xx status codes)
+          if (statusCode >= 200 && statusCode < 300) {
+            try {
+              await this.logAction({
+                adminId,
+                targetUserId,
+                actionType: auditAction, // Use the decorated action type
+                metadata: {
+                  method,
+                  path,
+                  statusCode,
+                  duration,
+                  query: Object.keys(query).length > 0 ? query : undefined,
+                  requestBody: body,
+                  responseSummary: this.getResponseSummary(data),
+                  timestamp: new Date().toISOString(),
+                },
+              });
+            } catch (error) {
+              const err = error as Error;
+              this.logger.error(`Failed to log audit: ${err.message}`);
+            }
           }
         }),
         error: voidTap(async (error: unknown) => {
@@ -144,11 +133,12 @@ export class AuditInterceptor implements NestInterceptor {
           const err = error as Error & { getStatus?: () => number };
           const statusCode = err.getStatus ? err.getStatus() : 500;
 
+          // Log failed attempts as well
           try {
             await this.logAction({
               adminId,
               targetUserId,
-              actionType: `${method} ${path}`, // Use path, not full URL
+              actionType: auditAction, // Use the decorated action type
               metadata: {
                 method,
                 path,
@@ -197,6 +187,7 @@ export class AuditInterceptor implements NestInterceptor {
   private extractTargetUserId(
     params: Record<string, string>,
     body: Record<string, unknown> | null | undefined,
+    path: string,
   ): string | undefined {
     // Check common parameter names for user IDs
     const possibleIdFields = [
@@ -212,6 +203,20 @@ export class AuditInterceptor implements NestInterceptor {
     for (const field of possibleIdFields) {
       if (params[field]) {
         return params[field];
+      }
+    }
+
+    // Extract from path patterns (e.g., /admin/users/123/email)
+    const pathParts = path.split('/');
+    for (let i = 0; i < pathParts.length; i++) {
+      // Look for UUID pattern
+      if (
+        pathParts[i] &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          pathParts[i],
+        )
+      ) {
+        return pathParts[i];
       }
     }
 

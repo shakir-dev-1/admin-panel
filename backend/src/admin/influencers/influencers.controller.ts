@@ -13,6 +13,7 @@ import {
 import { InfluencersService } from './influencers.service.js';
 import type { InfluencerSortField, SortOrder } from './influencers.service.js';
 import { CampaignOfferStatus } from '../../generated/prisma/client.js';
+import { Audit } from '../../audit/audit.decorator.js';
 
 // DTOs for request validation
 class ChangeEmailDto {
@@ -114,6 +115,7 @@ export class InfluencersController {
    * Force password reset for an influencer
    */
   @Post(':influencerId/reset-password')
+  @Audit('PASSWORD_RESET')
   async resetPassword(@Param('influencerId') influencerId: string) {
     return this.influencersService.forcePasswordReset(influencerId);
   }
@@ -122,6 +124,7 @@ export class InfluencersController {
    * Change influencer's email
    */
   @Patch(':influencerId/email')
+  @Audit('EMAIL_CHANGE')
   async changeEmail(
     @Param('influencerId') influencerId: string,
     @Body() dto: ChangeEmailDto,
@@ -133,6 +136,7 @@ export class InfluencersController {
    * Change influencer's phone number
    */
   @Patch(':influencerId/phone')
+  @Audit('PHONE_CHANGE')
   async changePhone(
     @Param('influencerId') influencerId: string,
     @Body() dto: ChangePhoneDto,
@@ -144,6 +148,7 @@ export class InfluencersController {
    * Activate/Deactivate influencer
    */
   @Patch(':influencerId/status')
+  @Audit('STATUS_CHANGE')
   async changeStatus(
     @Param('influencerId') influencerId: string,
     @Body() dto: ChangeStatusDto,

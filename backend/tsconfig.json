@@ -23,6 +23,6 @@
     "noFallthroughCasesInSwitch": false,
     "types": ["node"]
   },
-  "include": ["src/**/*", "prisma/**/*"],
+  "include": ["src/**/*", "prisma/**/*","test/**/*"],
   "exclude": ["node_modules", "dist",  "src/tests/debug-imports.ts.old"]
 }

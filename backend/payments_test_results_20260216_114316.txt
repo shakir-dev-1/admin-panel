@@ -1,0 +1,40 @@
+=== Admin Payments API Test Results ===
+Test Date: Mon Feb 16 11:43:16 AM UTC 2026
+
+✓ Test 1: Get businesses - PASS
+  → Found 8 businesses
+
+  Using business ID: 1571c763-50ca-4474-a965-987312a155d2
+✓ Test 2: Get business details - PASS
+  → Business: Elegant Salon & Spa, Has subscription: yes
+
+✓ Test 3: Get subscription - PASS
+  → No active subscription found
+
+✓ Test 4: Get payments - PASS
+  → Transactions found: 1, Stripe payments: 1
+
+✓ Test 5: Get failed payments - PASS
+  → Failed transactions: 1, Stripe failed: 1
+
+✓ Test 6: Get all payments - PASS
+  → Payments found: 1, Has more: true, Next cursor: 20ccb75a-2f14-4c4e-b...
+
+✓ Test 7: Get payment stats - PASS
+  → Total transactions: 133, Revenue: 298.38, Volume: 343.86
+
+✓ Test 8: Get all failed payments - PASS
+  → Failed payments found: 1, Has more: false
+
+✓ Test 9: Get all disputes - PASS
+  → Disputes found: 0
+
+✓ Test 10: Get all refunds - PASS
+  → Refunds found: 1, Has more: false
+
+✓ Test 11: Get business disputes - PASS
+  → Disputes found: 0
+
+✗ Test 12: Cancel subscription - FAILED
+  Error: Cancellation failed
+

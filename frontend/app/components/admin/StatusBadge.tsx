@@ -62,6 +62,16 @@ const statusConfig: Record<
     icon: <CheckCircle className="h-3 w-3" />,
     className: "bg-status-active/10 text-status-active",
   },
+   paid: {
+    label: "Paid",
+    icon: <CheckCircle className="h-3 w-3" />,
+    className: "bg-status-active/10 text-status-active",
+  },
+  paid_out: {
+    label: "Paid Out",
+    icon: <CheckCircle className="h-3 w-3" />,
+    className: "bg-status-active/10 text-status-active",
+  },
   succeeded: {
     label: "Completed",
     icon: <CheckCircle className="h-3 w-3" />,
@@ -69,6 +79,11 @@ const statusConfig: Record<
   },
   failed: {
     label: "Failed",
+    icon: <XCircle className="h-3 w-3" />,
+    className: "bg-status-disabled/10 text-status-disabled",
+  },
+  unpaid: {
+    label: "Unpaid",
     icon: <XCircle className="h-3 w-3" />,
     className: "bg-status-disabled/10 text-status-disabled",
   },

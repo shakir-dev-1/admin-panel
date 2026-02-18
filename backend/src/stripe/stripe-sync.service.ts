@@ -190,178 +190,176 @@
 //     }
 //   }
 
-//  async syncActiveSubscriptions() {
-//   try {
-//     let hasMore = true;
-//     let startingAfter: string | undefined;
-//     let updatedBusinesses = 0;
+//   async syncActiveSubscriptions() {
+//     try {
+//       let hasMore = true;
+//       let startingAfter: string | undefined;
+//       let updatedBusinesses = 0;
 
-//     this.logger.log('Starting subscription status sync...');
+//       this.logger.log('Starting subscription status sync...');
 
-//     while (hasMore) {
-//       const params: Stripe.SubscriptionListParams = {
-//         limit: 100,
-//         status: 'all',
-//         expand: ['data.customer'], // Only expand customer, not product
-//       };
+//       while (hasMore) {
+//         const params: Stripe.SubscriptionListParams = {
+//           limit: 100,
+//           status: 'all',
+//           expand: ['data.customer'], // Only expand customer, not product
+//         };
 
-//       if (startingAfter) {
-//         params.starting_after = startingAfter;
-//       }
-
-//       const subscriptions = await this.stripe.subscriptions.list(params);
-
-//       for (const subscription of subscriptions.data) {
-//         // Get customer ID from expanded subscription
-//         const customerId =
-//           typeof subscription.customer === 'string'
-//             ? subscription.customer
-//             : subscription.customer?.id;
-
-//         if (!customerId) continue;
-
-//         // Find business by Stripe customer ID
-//         const business = await this.prisma.business.findFirst({
-//           where: { stripeCustomerId: customerId },
-//         });
-
-//         if (!business) continue;
-
-//         // Get the first item (there should be at least one)
-//         const firstItem = subscription.items.data[0];
-//         let subscriptionPlan = 'Unknown Plan';
-
-//         if (firstItem?.plan) {
-//           // Use nickname if available
-//           if (firstItem.plan.nickname) {
-//             subscriptionPlan = firstItem.plan.nickname;
-//           } 
-//           // Otherwise, fetch the product to get its name
-//           else if (typeof firstItem.plan.product === 'string') {
-//             try {
-//               const product = await this.stripe.products.retrieve(
-//                 firstItem.plan.product
-//               );
-//               subscriptionPlan = product.name;
-//             } catch (error) {
-//               this.logger.warn(
-//                 `Could not fetch product ${firstItem.plan.product}: ${error.message}`
-//               );
-//               subscriptionPlan = firstItem.plan.id;
-//             }
-//           }
+//         if (startingAfter) {
+//           params.starting_after = startingAfter;
 //         }
 
-//         // Update business subscription status
+//         const subscriptions = await this.stripe.subscriptions.list(params);
+
+//         for (const subscription of subscriptions.data) {
+//           // Get customer ID from expanded subscription
+//           const customerId =
+//             typeof subscription.customer === 'string'
+//               ? subscription.customer
+//               : subscription.customer?.id;
+
+//           if (!customerId) continue;
+
+//           // Find business by Stripe customer ID
+//           const business = await this.prisma.business.findFirst({
+//             where: { stripeCustomerId: customerId },
+//           });
+
+//           if (!business) continue;
+
+//           // Get the first item (there should be at least one)
+//           const firstItem = subscription.items.data[0];
+//           let subscriptionPlan = 'Unknown Plan';
+
+//           if (firstItem?.plan) {
+//             // Use nickname if available
+//             if (firstItem.plan.nickname) {
+//               subscriptionPlan = firstItem.plan.nickname;
+//             }
+//             // Otherwise, fetch the product to get its name
+//             else if (typeof firstItem.plan.product === 'string') {
+//               try {
+//                 const product = await this.stripe.products.retrieve(
+//                   firstItem.plan.product,
+//                 );
+//                 subscriptionPlan = product.name;
+//               } catch (error) {
+//                 this.logger.warn(
+//                   `Could not fetch product ${firstItem.plan.product}: ${error.message}`,
+//                 );
+//                 subscriptionPlan = firstItem.plan.id;
+//               }
+//             }
+//           }
+
+//           // Update business subscription status
+//           await this.prisma.business.update({
+//             where: { id: business.id },
+//             data: {
+//               stripeSubscriptionId: subscription.id,
+//               subscriptionStatus: subscription.status,
+//               subscriptionPlan,
+//             },
+//           });
+
+//           updatedBusinesses++;
+//         }
+
+//         hasMore = subscriptions.has_more;
+//         if (subscriptions.data.length > 0) {
+//           startingAfter = subscriptions.data[subscriptions.data.length - 1].id;
+//         }
+//       }
+
+//       this.logger.log(
+//         `Updated subscription status for ${updatedBusinesses} businesses`,
+//       );
+//       return { success: true, updatedBusinesses };
+//     } catch (error: any) {
+//       this.logger.error('Error syncing subscriptions:', error.message);
+//       throw error;
+//     }
+//   }
+
+//   async syncBusinessSubscription(businessId: string) {
+//     try {
+//       const business = await this.prisma.business.findUnique({
+//         where: { id: businessId },
+//       });
+
+//       if (!business?.stripeCustomerId) {
+//         throw new Error('Business or Stripe customer ID not found');
+//       }
+
+//       // Get latest subscription for this customer
+//       const subscriptions = await this.stripe.subscriptions.list({
+//         customer: business.stripeCustomerId,
+//         status: 'all',
+//         limit: 1,
+//       });
+
+//       if (subscriptions.data.length === 0) {
+//         // No active subscription
 //         await this.prisma.business.update({
-//           where: { id: business.id },
+//           where: { id: businessId },
 //           data: {
-//             stripeSubscriptionId: subscription.id,
-//             subscriptionStatus: subscription.status,
-//             subscriptionPlan,
+//             stripeSubscriptionId: null,
+//             subscriptionStatus: null,
+//             subscriptionPlan: null,
 //           },
 //         });
-
-//         updatedBusinesses++;
+//         return { success: true, status: 'no_subscription' };
 //       }
 
-//       hasMore = subscriptions.has_more;
-//       if (subscriptions.data.length > 0) {
-//         startingAfter = subscriptions.data[subscriptions.data.length - 1].id;
+//       const subscription = subscriptions.data[0];
+//       let subscriptionPlan = 'Unknown Plan';
+
+//       // Get the first item
+//       const firstItem = subscription.items.data[0];
+//       if (firstItem?.plan) {
+//         // Use nickname if available
+//         if (firstItem.plan.nickname) {
+//           subscriptionPlan = firstItem.plan.nickname;
+//         }
+//         // Otherwise, fetch the product to get its name
+//         else if (typeof firstItem.plan.product === 'string') {
+//           try {
+//             const product = await this.stripe.products.retrieve(
+//               firstItem.plan.product,
+//             );
+//             subscriptionPlan = product.name;
+//           } catch (error) {
+//             this.logger.warn(
+//               `Could not fetch product ${firstItem.plan.product}: ${error.message}`,
+//             );
+//             subscriptionPlan = firstItem.plan.id;
+//           }
+//         }
 //       }
-//     }
 
-//     this.logger.log(
-//       `Updated subscription status for ${updatedBusinesses} businesses`,
-//     );
-//     return { success: true, updatedBusinesses };
-//   } catch (error: any) {
-//     this.logger.error('Error syncing subscriptions:', error.message);
-//     throw error;
-//   }
-// }
-
-// async syncBusinessSubscription(businessId: string) {
-//   try {
-//     const business = await this.prisma.business.findUnique({
-//       where: { id: businessId },
-//     });
-
-//     if (!business?.stripeCustomerId) {
-//       throw new Error('Business or Stripe customer ID not found');
-//     }
-
-//     // Get latest subscription for this customer
-//     const subscriptions = await this.stripe.subscriptions.list({
-//       customer: business.stripeCustomerId,
-//       status: 'all',
-//       limit: 1,
-//     });
-
-//     if (subscriptions.data.length === 0) {
-//       // No active subscription
+//       // Update business with subscription info
 //       await this.prisma.business.update({
 //         where: { id: businessId },
 //         data: {
-//           stripeSubscriptionId: null,
-//           subscriptionStatus: null,
-//           subscriptionPlan: null,
+//           stripeSubscriptionId: subscription.id,
+//           subscriptionStatus: subscription.status,
+//           subscriptionPlan,
 //         },
 //       });
-//       return { success: true, status: 'no_subscription' };
+
+//       return {
+//         success: true,
+//         status: subscription.status,
+//         plan: subscriptionPlan,
+//       };
+//     } catch (error: any) {
+//       this.logger.error(
+//         `Error syncing subscription for business ${businessId}:`,
+//         error.message,
+//       );
+//       throw error;
 //     }
-
-//     const subscription = subscriptions.data[0];
-//     let subscriptionPlan = 'Unknown Plan';
-
-//     // Get the first item
-//     const firstItem = subscription.items.data[0];
-//     if (firstItem?.plan) {
-//       // Use nickname if available
-//       if (firstItem.plan.nickname) {
-//         subscriptionPlan = firstItem.plan.nickname;
-//       } 
-//       // Otherwise, fetch the product to get its name
-//       else if (typeof firstItem.plan.product === 'string') {
-//         try {
-//           const product = await this.stripe.products.retrieve(
-//             firstItem.plan.product
-//           );
-//           subscriptionPlan = product.name;
-//         } catch (error) {
-//           this.logger.warn(
-//             `Could not fetch product ${firstItem.plan.product}: ${error.message}`
-//           );
-//           subscriptionPlan = firstItem.plan.id;
-//         }
-//       }
-//     }
-
-//     // Update business with subscription info
-//     await this.prisma.business.update({
-//       where: { id: businessId },
-//       data: {
-//         stripeSubscriptionId: subscription.id,
-//         subscriptionStatus: subscription.status,
-//         subscriptionPlan,
-//       },
-//     });
-
-//     return {
-//       success: true,
-//       status: subscription.status,
-//       plan: subscriptionPlan,
-//     };
-//   } catch (error: any) {
-//     this.logger.error(
-//       `Error syncing subscription for business ${businessId}:`,
-//       error.message,
-//     );
-//     throw error;
 //   }
-// }
-
-
 
 //   async fixStaleTransactions(hours = 24) {
 //     const cutoffDate = new Date();
@@ -446,9 +444,7 @@
 //           { stripeCustomerId: { not: null } },
 //           { stripeSubscriptionId: { not: null } },
 //           {
-//             OR: [
-//               { subscriptionStatus: null },
-//             ],
+//             OR: [{ subscriptionStatus: null }],
 //           },
 //         ],
 //       },

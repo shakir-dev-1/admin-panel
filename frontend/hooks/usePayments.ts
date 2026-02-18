@@ -1,36 +1,40 @@
-'use client';
+"use client";
 
 // src/hooks/usePayments.ts
-import { useState, useEffect } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api";
+import type Stripe from "stripe";
 
-export type PaymentStatus =
-  | "succeeded"
-  | "requires_payment_method"
-  | "canceled"
-  | "processing"
-  | "requires_action"
-  | "requires_capture"
-  | "disputed"
-  | "refunded";
+// Types based on the service response
+export type TransactionStatus = "CREATED" | "PAID" | "FAILED";
+export type TransactionPaymentStatus =
+  | "PAID_OUT"
+  | "REFUNDED"
+  | "UNPAID"
+  | "PAID";
+export type TransactionType = "PAY_IN" | "PAY_OUT";
 
-export interface Payment {
+export interface PaymentTransaction {
   id: string;
-  stripePaymentId: string;
-  description: string;
   amount: number;
-  refunded?: boolean;
+  refundAmount: number;
   currency: string;
-  status: PaymentStatus;
-  userName: string;
-  userEmail: string;
-  userId: string;
-  businessId?: string;
+  status: TransactionStatus;
+  paymentStatus: TransactionPaymentStatus;
+  type: TransactionType;
+  businessId: string;
   businessName?: string;
+  invoiceId: string;
+  clientName?: string;
+  clientPhone?: string;
   createdAt: string;
-  disputeStatus?: string;
-  customerId: string;
+}
+
+export interface PaymentsResponse {
+  data: PaymentTransaction[];
+  hasMore: boolean;
+  nextCursor?: string;
 }
 
 export interface PaymentStats {
@@ -38,131 +42,182 @@ export interface PaymentStats {
   completedRevenue: number;
   totalVolume: number;
   totalRefunded: number;
+  failedTransactions: number;
+  subscriptionStats: Array<{
+    status: string;
+    _count: number;
+  }>;
 }
 
-export interface PaymentsResponse {
-  data: Payment[];
-  hasMore: boolean;
-  nextCursor?: string;
-}
-
-export function usePayments(params?: {
+export interface UsePaymentsParams {
   limit?: number;
-  cursor?: string;
-  status?: PaymentStatus | "all";
-  search?: string;
-}) {
+  paymentStatus?: TransactionPaymentStatus | "all";
+}
+
+export function usePayments(params?: UsePaymentsParams) {
   const { token } = useAuth();
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const limit = params?.limit || 50;
 
-  useEffect(() => {
-    if (!token) return;
+  const fetchPayments = async ({ pageParam }: { pageParam?: string }) => {
+    if (!token) throw new Error("Not authenticated");
 
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
+    const queryParams = new URLSearchParams();
+    queryParams.append("limit", limit.toString());
+    if (pageParam) queryParams.append("cursor", pageParam);
 
-        const queryParams = new URLSearchParams();
-        if (params?.limit) queryParams.append("limit", params.limit.toString());
-        if (params?.cursor) queryParams.append("starting_after", params.cursor);
+    const url = `/admin/payments/payments?${queryParams.toString()}`;
+    const response = await fetchWithAuth<PaymentsResponse>(url, token);
 
-        // Simplify: Remove the '/search' URL unless you implement it on the backend.
-        // Stripe Search API has different syntax and rate limits.
-        const url = `/admin/business/payments?${queryParams.toString()}`;
-        const response = await fetchWithAuth<PaymentsResponse>(url, token);
-
-        console.log("Fetched payments:", response.data);
-
-        setPayments(response.data);
-        setHasMore(response.hasMore);
-        setNextCursor(response.nextCursor);
-        setLoading(false);
-      } catch (err: any) {
-        console.error("Error fetching payments:", err);
-        setError(err.message || "Failed to load payments");
-        setLoading(false);
-      }
-    };
-
-    fetchPayments();
-  }, [token, params?.limit, params?.cursor, params?.status, params?.search]);
-
-  const loadMore = async () => {
-    if (!token || !nextCursor || loading) return;
-
-    try {
-      const queryParams = new URLSearchParams();
-      if (params?.limit) queryParams.append("limit", params.limit.toString());
-      queryParams.append("starting_after", nextCursor);
-      if (params?.status && params.status !== "all") {
-        queryParams.append("status", params.status);
-      }
-
-      const url = `/admin/business/payments?${queryParams.toString()}`;
-      const response = await fetchWithAuth<PaymentsResponse>(url, token);
-
-      setPayments((prev) => [...prev, ...response.data]);
-      setHasMore(response.hasMore);
-      setNextCursor(response.nextCursor);
-    } catch (err: any) {
-      console.error("Error loading more payments:", err);
-      setError(err.message || "Failed to load more payments");
-    }
+    return response;
   };
 
-  return { payments, loading, error, hasMore, loadMore, nextCursor };
+  const query = useInfiniteQuery({
+    queryKey: ["payments", limit, params?.paymentStatus],
+    queryFn: fetchPayments,
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Flatten all pages of payments
+  const allPayments = query.data?.pages.flatMap((page) => page.data) || [];
+
+  // Filter by status if needed
+  const filteredPayments =
+    params?.paymentStatus && params.paymentStatus !== "all"
+      ? allPayments.filter((p) => p.paymentStatus === params.paymentStatus)
+      : allPayments;
+
+  return {
+    payments: filteredPayments,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    hasMore: query.hasNextPage,
+    loadMore: query.fetchNextPage,
+    refetch: query.refetch,
+    isFetchingNextPage: query.isFetchingNextPage,
+  };
 }
 
 export function usePaymentStats() {
   const { token } = useAuth();
-  const [stats, setStats] = useState<{
-    totalTransactions: number;
-    completedRevenue: number;
-    totalVolume: number;
-    totalRefunded: number;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
+  const fetchStats = async () => {
+    if (!token) throw new Error("Not authenticated");
+    return fetchWithAuth<PaymentStats>("/admin/payments/payments/stats", token);
+  };
 
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
+  const query = useQuery({
+    queryKey: ["paymentStats"],
+    queryFn: fetchStats,
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+  });
 
-        // Fetch recent payments to calculate stats
-        const paymentsStats = await fetchWithAuth<PaymentStats>(
-          "/admin/business/payments/stats",
-          token,
-        );
+  return {
+    stats: query.data || null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
+}
 
-        console.log("Fetched payments stats:", paymentsStats);
-        const totalTransactions = paymentsStats.totalTransactions;
-        const completedRevenue = paymentsStats.completedRevenue;
-        const totalVolume = paymentsStats.totalVolume;
-        const totalRefunded = paymentsStats.totalRefunded;
+export function useFailedPayments(params?: { limit?: number }) {
+  const { token } = useAuth();
+  const limit = params?.limit || 50;
 
-        setStats({
-          totalTransactions,
-          completedRevenue,
-          totalVolume,
-          totalRefunded,
-        });
-        setLoading(false);
-      } catch (err: any) {
-        console.error("Error fetching payment stats:", err);
-        setError(err.message || "Failed to load payment statistics");
-        setLoading(false);
-      }
+  const fetchFailedPayments = async ({ pageParam }: { pageParam?: string }) => {
+    if (!token) throw new Error("Not authenticated");
+
+    const queryParams = new URLSearchParams();
+    queryParams.append("limit", limit.toString());
+    if (pageParam) queryParams.append("cursor", pageParam);
+
+    const url = `/admin/payments/payments/failed?${queryParams.toString()}`;
+    const response = await fetchWithAuth<PaymentsResponse>(url, token);
+
+    return response;
+  };
+
+  const query = useInfiniteQuery({
+    queryKey: ["failedPayments", limit],
+    queryFn: fetchFailedPayments,
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allPayments = query.data?.pages.flatMap((page) => page.data) || [];
+
+  return {
+    payments: allPayments,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    hasMore: query.hasNextPage,
+    loadMore: query.fetchNextPage,
+    refetch: query.refetch,
+    isFetchingNextPage: query.isFetchingNextPage,
+  };
+}
+
+export function useBusinessPayments(businessId: string) {
+  const { token } = useAuth();
+
+  const fetchBusinessPayments = async () => {
+    if (!token) throw new Error("Not authenticated");
+    if (!businessId) throw new Error("Business ID is required");
+
+    const response = await fetchWithAuth<{
+      transactions: {
+        id: string;
+        amountSent: number;
+        amountReceived: number;
+        transactionStatus: TransactionStatus;
+        paymentStatus: TransactionPaymentStatus;
+        transactionType: TransactionType;
+        businessId: string;
+        invoiceId: string;
+        createdAt: string;
+      }[];
+      stripePayments: Stripe.PaymentIntent[];
+    }>(`/admin/payments/${businessId}/payments`, token);
+
+    // Transform transactions to match PaymentTransaction type
+    const transactions: PaymentTransaction[] = response.transactions.map(
+      (t) => ({
+        id: t.id,
+        amount: t.amountSent,
+        refundAmount: t.amountReceived,
+        currency: "USD",
+        status: t.transactionStatus,
+        paymentStatus: t.paymentStatus,
+        type: t.transactionType,
+        businessId: t.businessId,
+        invoiceId: t.invoiceId,
+        createdAt: t.createdAt,
+      }),
+    );
+
+    return {
+      transactions,
+      stripePayments: response.stripePayments,
     };
+  };
 
-    fetchStats();
-  }, [token]);
+  const query = useQuery({
+    queryKey: ["businessPayments", businessId],
+    queryFn: fetchBusinessPayments,
+    enabled: !!token && !!businessId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
 
-  return { stats, loading, error };
+  return {
+    payments: query.data || null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }

@@ -9,8 +9,9 @@ import { AdminModule } from './admin/admin.module.js';
 import { AdminService } from './admin/admin.service.js';
 import { AuditModule } from './audit/audit.module.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { PaymentsModule } from './admin/payments/payments.module.js';
 // import { TestModule } from './test/test.module.js';
-// import { StripeModule } from './stripe/stripe.module.js';
+import { StripeModule } from './stripe/stripe.module.js';
 
 @Module({
   imports: [
@@ -29,11 +30,12 @@ import { PrismaService } from './prisma/prisma.service.js';
       ],
     }),
 
-    // StripeModule,
+    StripeModule,
     AuthModule,
     MetricsModule,
     AdminModule,
     AuditModule,
+    PaymentsModule,
     // TestModule,
   ],
   controllers: [AppController],

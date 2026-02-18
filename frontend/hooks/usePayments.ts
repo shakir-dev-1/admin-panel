@@ -54,6 +54,7 @@ export interface UsePaymentsParams {
   paymentStatus?: TransactionPaymentStatus | "all";
 }
 
+// src/hooks/usePayments.ts
 export function usePayments(params?: UsePaymentsParams) {
   const { token } = useAuth();
   const limit = params?.limit || 50;
@@ -72,7 +73,8 @@ export function usePayments(params?: UsePaymentsParams) {
   };
 
   const query = useInfiniteQuery({
-    queryKey: ["payments", limit, params?.paymentStatus],
+    // Remove paymentStatus from queryKey - now it only refetches when limit changes
+    queryKey: ["payments", limit],
     queryFn: fetchPayments,
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -83,14 +85,9 @@ export function usePayments(params?: UsePaymentsParams) {
   // Flatten all pages of payments
   const allPayments = query.data?.pages.flatMap((page) => page.data) || [];
 
-  // Filter by status if needed
-  const filteredPayments =
-    params?.paymentStatus && params.paymentStatus !== "all"
-      ? allPayments.filter((p) => p.paymentStatus === params.paymentStatus)
-      : allPayments;
-
+  // Don't filter here - return all payments
   return {
-    payments: filteredPayments,
+    payments: allPayments, // Return all payments
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error.message : null,
     hasMore: query.hasNextPage,

@@ -2,7 +2,7 @@
 "use client";
 
 // src/pages/admin/Payments.tsx
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   RefreshCw,
   DollarSign,
@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ArrowUpDown,
   Plus,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SearchInput } from "@/app/components/admin/SearchInput";
@@ -46,7 +48,6 @@ import {
   usePayments,
   usePaymentStats,
   type PaymentTransaction,
-  // type TransactionStatus,
   type TransactionPaymentStatus,
 } from "@/hooks/usePayments";
 import { useAuth } from "@/hooks/useAuth";
@@ -54,15 +55,6 @@ import { fetchWithAuth, postWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // Helper function to get display status
-// const getDisplayStatus = (status: TransactionStatus): string => {
-//   const statusMap: Record<TransactionStatus, string> = {
-//     CREATED: "Created",
-//     PAID: "Completed",
-//     FAILED: "Failed",
-//   };
-//   return statusMap[status] || status;
-// };
-
 const getPaymentStatus = (status: TransactionPaymentStatus): string => {
   const paymentStatusMap: Record<TransactionPaymentStatus, string> = {
     PAID_OUT: "PAID_OUT",
@@ -79,12 +71,16 @@ const formatAmount = (amount: number, currency: string = "USD"): string => {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
-  }).format(amount); // Assuming amount is in cents
+  }).format(amount);
 };
 
 // Sorting types
 type SortField = "date" | "amount" | "user" | "status" | "business";
 type SortDirection = "asc" | "desc";
+
+// Pagination constants
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_PAGE_SIZE = 25;
 
 export default function Payments() {
   const { token } = useAuth();
@@ -100,17 +96,20 @@ export default function Payments() {
   );
   const [refunding, setRefunding] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   const {
-    payments,
+    payments: allPayments,
     loading,
     error,
-    hasMore,
+    hasMore: hasMoreServerPages,
     loadMore,
     isFetchingNextPage,
     refetch: refetchPayments,
   } = usePayments({
-    limit: 50,
-    paymentStatus: statusFilter !== "all" ? statusFilter : undefined,
+    // limit: 50, // Keep fetching 50 at a time from server
   });
 
   const {
@@ -140,7 +139,6 @@ export default function Payments() {
       setLoadingBusinesses(true);
       const response = await fetchWithAuth("/admin/payments/businesses", token);
 
-      // Type assertion or type guard
       if (Array.isArray(response)) {
         setBusinesses(response as Array<{ id: string; name: string }>);
       } else {
@@ -150,7 +148,7 @@ export default function Payments() {
     } catch (error) {
       console.error("Failed to fetch businesses:", error);
       toast.error("Failed to load businesses");
-      setBusinesses([]); // Reset on error
+      setBusinesses([]);
     } finally {
       setLoadingBusinesses(false);
     }
@@ -168,59 +166,65 @@ export default function Payments() {
   };
 
   // Handle creating a test payment
-const handleCreatePayment = async () => {
-  if (!token) return;
-  if (!paymentForm.businessId || !paymentForm.amount) {
-    toast.error("Please select a business and enter an amount");
-    return;
-  }
-
-  const toastId = toast.loading("Creating test payment...");
-
-  try {
-    setCreatingPayment(true);
-
-    interface CreatePaymentResponse {
-      clientSecret: string;
-      transactionId: string;
+  const handleCreatePayment = async () => {
+    if (!token) return;
+    if (!paymentForm.businessId || !paymentForm.amount) {
+      toast.error("Please select a business and enter an amount");
+      return;
     }
 
-    // FIX: Include businessId in the URL path, not in the body
-    const response = (await postWithAuth(
-      `/admin/payments/${paymentForm.businessId}/create-payment-intent`, // Changed URL
-      token,
-      {
-        amount: parseFloat(paymentForm.amount), // Only amount and invoiceId in body
-        invoiceId: paymentForm.invoiceId,
-      },
-    )) as CreatePaymentResponse;
+    const toastId = toast.loading("Creating test payment...");
 
-    toast.success("Test payment created successfully", {
-      id: toastId,
-      description: `Payment intent created with client secret: ${response.clientSecret.slice(0, 20)}...`,
-    });
+    try {
+      setCreatingPayment(true);
 
-    setShowCreatePayment(false);
+      interface CreatePaymentResponse {
+        clientSecret: string;
+        transactionId: string;
+      }
 
-    // Refetch payments to show the new one
-    await refetchPayments();
-    await refetchStats();
-  } catch (error: any) {
-    console.error("Create payment error:", error);
-    toast.error("Failed to create test payment", {
-      id: toastId,
-      description: error.response?.data?.message || error.message,
-    });
-  } finally {
-    setCreatingPayment(false);
-  }
-};
+      const response = (await postWithAuth(
+        `/admin/payments/${paymentForm.businessId}/create-payment-intent`,
+        token,
+        {
+          amount: parseFloat(paymentForm.amount),
+          invoiceId: paymentForm.invoiceId,
+        },
+      )) as CreatePaymentResponse;
 
-  // Client-side search and sorting
+      toast.success("Test payment created successfully", {
+        id: toastId,
+        description: `Payment intent created with client secret: ${response.clientSecret.slice(0, 20)}...`,
+      });
+
+      setShowCreatePayment(false);
+
+      // Refetch payments to show the new one
+      await refetchPayments();
+      await refetchStats();
+    } catch (error: any) {
+      console.error("Create payment error:", error);
+      toast.error("Failed to create test payment", {
+        id: toastId,
+        description: error.response?.data?.message || error.message,
+      });
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  // Client-side search, filtering, and sorting
   const filteredAndSortedPayments = useMemo(() => {
-    if (!payments) return [];
+    if (!allPayments) return [];
 
-    let filtered = [...payments];
+    let filtered = [...allPayments];
+
+    // Apply status filter client-side
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(
+        (payment) => payment.paymentStatus === statusFilter,
+      );
+    }
 
     // Apply search filter
     if (search) {
@@ -265,7 +269,6 @@ const handleCreatePayment = async () => {
           return 0;
       }
 
-      // Handle string comparison
       if (typeof aValue === "string" && typeof bValue === "string") {
         if (sortDirection === "asc") {
           return aValue.localeCompare(bValue);
@@ -274,7 +277,6 @@ const handleCreatePayment = async () => {
         }
       }
 
-      // Handle number/date comparison
       if (sortDirection === "asc") {
         return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
       } else {
@@ -283,7 +285,75 @@ const handleCreatePayment = async () => {
     });
 
     return filtered;
-  }, [payments, search, sortField, sortDirection]);
+  }, [allPayments, search, statusFilter, sortField, sortDirection]);
+
+  // Pagination calculations
+  const totalFilteredItems = filteredAndSortedPayments.length;
+  const totalPages = Math.ceil(totalFilteredItems / pageSize);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, sortField, sortDirection, pageSize]);
+
+  // Auto-load all pages on mount
+  useEffect(() => {
+    if (hasMoreServerPages && !isFetchingNextPage) {
+      loadMore();
+    }
+  }, [hasMoreServerPages, isFetchingNextPage, loadMore]);
+
+  // Get current page items
+  const currentPageItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredAndSortedPayments.slice(startIndex, endIndex);
+  }, [filteredAndSortedPayments, currentPage, pageSize]);
+
+  // Pagination handlers
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  const goToNextPage = () => {
+    goToPage(currentPage + 1);
+  };
+
+  const goToPreviousPage = () => {
+    goToPage(currentPage - 1);
+  };
+
+  // Generate page numbers for pagination
+  const pageNumbers = useMemo((): (number | string)[] => {
+    const delta = 2; // Number of pages to show on each side of current page
+    const range: number[] = [];
+    const rangeWithDots: (number | string)[] = [];
+    let l: number | undefined;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= currentPage - delta && i <= currentPage + delta)
+      ) {
+        range.push(i);
+      }
+    }
+
+    range.forEach((i) => {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l !== 1) {
+          rangeWithDots.push("...");
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    });
+
+    return rangeWithDots;
+  }, [totalPages, currentPage]);
 
   const handleRefund = async () => {
     if (!refundPayment || !token) return;
@@ -310,17 +380,10 @@ const handleCreatePayment = async () => {
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       await queryClient.invalidateQueries({ queryKey: ["paymentStats"] });
     } catch (error: any) {
-      // console.error("Refund error details:", {
-      //   transactionId: refundPayment?.id,
-      //   error: error.response?.data || error.message,
-      // });
-
-      // Better error messages based on the error
       let errorMessage = "Failed to issue refund";
       let errorDescription =
         "Please try again or contact support if the issue persists.";
 
-      // Check if we have a structured error response
       if (error.response?.data) {
         const { error: errorCode, message } = error.response.data;
 
@@ -328,7 +391,7 @@ const handleCreatePayment = async () => {
           errorMessage = "Payment Intent Not Found";
           errorDescription =
             message ||
-            "This payment cannot be refunded because the associated Stripe payment intent was not found. It may have been created in test mode or deleted.";
+            "This payment cannot be refunded because the associated Stripe payment intent was not found.";
         } else if (errorCode === "ALREADY_REFUNDED") {
           errorMessage = "Already Refunded";
           errorDescription =
@@ -348,7 +411,6 @@ const handleCreatePayment = async () => {
           errorDescription = message || errorDescription;
         }
       } else if (error instanceof Error) {
-        // Fallback for non-structured errors
         if (error.message.includes("PAYMENT_INTENT_NOT_FOUND")) {
           errorMessage = "Payment Intent Not Found";
           errorDescription =
@@ -388,12 +450,10 @@ const handleCreatePayment = async () => {
 
       const toastId = toast.loading("Syncing with Stripe...");
 
-      // Note: You might need to implement this endpoint
       await postWithAuth("/admin/sync/stripe/transactions?days=7", token, {});
 
       toast.success("Sync completed! Refreshing data...", { id: toastId });
 
-      // Refetch all payment data
       await refetchPayments();
       await refetchStats();
 
@@ -479,7 +539,7 @@ const handleCreatePayment = async () => {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats (unchanged) */}
       {statsLoading ? (
         <div className="grid gap-4 sm:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
@@ -629,11 +689,17 @@ const handleCreatePayment = async () => {
             </SelectContent>
           </Select>
           <div className="text-sm text-muted-foreground">
-            Showing {filteredAndSortedPayments.length} of{" "}
-            {payments?.length || 0} payments
+            Showing {currentPageItems.length} of {totalFilteredItems} payments
           </div>
         </div>
       </div>
+      
+      {isFetchingNextPage && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground px-4 py-2 bg-muted/30">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Loading all payments...
+        </div>
+      )}
 
       {/* Payments Table */}
       <div className="admin-card p-0">
@@ -660,7 +726,7 @@ const handleCreatePayment = async () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSortedPayments.length === 0 ? (
+                {currentPageItems.length === 0 ? (
                   <tr>
                     <td
                       colSpan={7}
@@ -672,7 +738,7 @@ const handleCreatePayment = async () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredAndSortedPayments.map((payment) => (
+                  currentPageItems.map((payment) => (
                     <tr key={payment.id} className="border-b hover:bg-muted/30">
                       <td className="px-4 py-3 font-mono text-xs">
                         {payment.id.slice(0, 8)}...
@@ -704,7 +770,8 @@ const handleCreatePayment = async () => {
                         {format(new Date(payment.createdAt), "MMM d, yyyy")}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {payment.status === "PAID" && (
+                        {(payment.paymentStatus === "PAID" ||
+                          payment.paymentStatus === "PAID_OUT") && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -724,64 +791,76 @@ const handleCreatePayment = async () => {
           )}
         </div>
 
-        {/* Load More */}
-        {hasMore && filteredAndSortedPayments.length > 0 && (
-          <div className="flex justify-center border-t p-4">
-            <Button
-              variant="outline"
-              onClick={() => loadMore()}
-              disabled={isFetchingNextPage}
-            >
-              {isFetchingNextPage ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Load More"
-              )}
-            </Button>
-          </div>
-        )}
-
-        {/* Pagination Info */}
-        {filteredAndSortedPayments.length > 0 && (
+        {/* Pagination Controls */}
+        {totalFilteredItems > 0 && (
           <div className="border-t p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {filteredAndSortedPayments.length} payments
-                {search && ` matching "${search}"`}
-                {statusFilter !== "all" &&
-                  ` with status "${getPaymentStatus(statusFilter)}"`}
-              </div>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Page size selector */}
               <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  Rows per page:
+                </span>
                 <Select
-                  value={sortField}
-                  onValueChange={(value) => setSortField(value as SortField)}
+                  value={pageSize.toString()}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    setCurrentPage(1);
+                  }}
                 >
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue placeholder="Sort by" />
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="amount">Amount</SelectItem>
-                    <SelectItem value="user">Client</SelectItem>
-                    <SelectItem value="status">Status</SelectItem>
-                    <SelectItem value="business">Business</SelectItem>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={size.toString()}>
+                        {size}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Pagination info */}
+              <div className="text-sm text-muted-foreground">
+                Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                {Math.min(currentPage * pageSize, totalFilteredItems)} of{" "}
+                {totalFilteredItems} results
+              </div>
+
+              {/* Pagination buttons */}
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-                  }
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
                 >
-                  {sortDirection === "asc" ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                  {pageNumbers.map((page, index) => (
+                    <Button
+                      key={index}
+                      variant={page === currentPage ? "default" : "outline"}
+                      size="sm"
+                      className="min-w-[32px]"
+                      onClick={() => typeof page === "number" && goToPage(page)}
+                      disabled={typeof page !== "number"}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -789,7 +868,7 @@ const handleCreatePayment = async () => {
         )}
       </div>
 
-      {/* Refund Dialog */}
+      {/* Refund Dialog (unchanged) */}
       <AlertDialog
         open={!!refundPayment}
         onOpenChange={() => !refunding && setRefundPayment(null)}
@@ -837,7 +916,7 @@ const handleCreatePayment = async () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Create Test Payment Dialog */}
+      {/* Create Test Payment Dialog (unchanged) */}
       <AlertDialog open={showCreatePayment} onOpenChange={setShowCreatePayment}>
         <AlertDialogContent className="sm:max-w-[425px]">
           <AlertDialogHeader>

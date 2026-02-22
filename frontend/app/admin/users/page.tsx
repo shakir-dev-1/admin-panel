@@ -12,6 +12,7 @@ import {
   Users,
   Building2,
   Sparkles,
+  Info,
 } from "lucide-react";
 import { SearchInput } from "@/app/components/admin/SearchInput";
 import { StatusBadge } from "@/app/components/admin/StatusBadge";
@@ -32,6 +33,12 @@ import {
 } from "@/app/components/ui/tabs";
 import { Card, CardContent } from "@/app/components/ui/card";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/app/components/ui/tooltip";
+import {
   useUsers,
   useBusinessUsers,
   useInfluencers,
@@ -42,6 +49,7 @@ import {
 } from "@/hooks/useUsers";
 import { formatDistanceToNow } from "date-fns";
 import { mapUserStatus } from "@/lib/utils";
+import { StatCard } from "@/app/components/admin/StatCard";
 
 // Sorting types
 type SortField =
@@ -96,7 +104,6 @@ type UserLike = {
   name?: string | null;
   username?: string | null;
 };
-
 
 function getDisplayName(user: UserLike): string {
   if (user.firstName || user.lastName) {
@@ -688,12 +695,6 @@ export default function UsersPage() {
     setPage(1);
   };
 
-  // console.log("Data from cache:", {
-  //   consumers: consumers?.length || 0,
-  //   businessUsers: businessUsers?.length || 0,
-  //   influencers: influencers?.length || 0,
-  // });
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -704,86 +705,62 @@ export default function UsersPage() {
         </p>
       </div>
 
-      {/* Stats Dashboard */}
+      {/* Stats Dashboard with Tooltips */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Total Users
-                </p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-              <span className="text-center">
-                <div className="font-medium">{stats.consumer}</div>
-                <div className="text-muted-foreground">Consumer</div>
-              </span>
-              <span className="text-center">
-                <div className="font-medium">{stats.business}</div>
-                <div className="text-muted-foreground">Business</div>
-              </span>
-              <span className="text-center">
-                <div className="font-medium">{stats.influencer}</div>
-                <div className="text-muted-foreground">Influencer</div>
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Active Users
-                </p>
-                <p className="text-2xl font-bold text-green-600">
-                  {stats.active}
-                </p>
-              </div>
-              <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
-                <span className="text-green-600 text-sm font-bold">✓</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Inactive
-                </p>
-                <p className="text-2xl font-bold text-amber-600">
-                  {stats.inactive}
-                </p>
-              </div>
-              <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center">
-                <span className="text-amber-600 text-sm font-bold">!</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Disabled
-                </p>
-                <p className="text-2xl font-bold text-destructive">
-                  {stats.disabled}
-                </p>
-              </div>
-              <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center">
-                <span className="text-destructive text-sm font-bold">✗</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Total Users"
+          value={stats.total}
+          icon={<Users className="h-5 w-5 text-primary" />}
+          tooltip="Total number of registered users across all account types (consumers, business users, and influencers)"
+        />
+
+        <StatCard
+          title="Active Users"
+          value={stats.active}
+          icon={<div className="h-5 w-5 text-green-600 font-bold">✓</div>}
+          valueClassName="text-green-600"
+          tooltip="Users with confirmed email addresses. For consumers, they must also not be banned."
+        />
+
+        <StatCard
+          title="Inactive Users"
+          value={stats.inactive}
+          icon={<div className="h-5 w-5 text-amber-600 font-bold">!</div>}
+          valueClassName="text-amber-600"
+          tooltip="Users with unconfirmed emails. For consumers, this excludes banned users."
+        />
+
+        <StatCard
+          title="Disabled Users"
+          value={stats.disabled}
+          icon={<div className="h-5 w-5 text-destructive font-bold">✗</div>}
+          valueClassName="text-destructive"
+          tooltip="Consumers who have been banned from the platform by administrators."
+        />
+      </div>
+
+      {/* Breakdown Stats - Optional additional row for more detail */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard
+          title="Consumers"
+          value={stats.consumer}
+          icon={<Users className="h-5 w-5 text-blue-500" />}
+          tooltip="Regular platform users who can book services and interact with businesses"
+        />
+
+        <StatCard
+          title="Business Users"
+          value={stats.business}
+          icon={<Building2 className="h-5 w-5 text-purple-500" />}
+          tooltip="Users associated with businesses who can manage services, appointments, and business operations"
+        />
+
+        <StatCard
+          title="Influencers"
+          value={stats.influencer}
+          icon={<Sparkles className="h-5 w-5 text-amber-500" />}
+          tooltip="Influencer account users who can participate in marketing campaigns and promotions"
+        />
       </div>
 
       {/* Tabs */}

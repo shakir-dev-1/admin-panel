@@ -18,11 +18,6 @@ import {
 import { PaymentsService } from './payments.service.js';
 // import { AdminGuard } from '../../auth/guards/admin.guard.js';
 import { Audit } from '../../audit/audit.decorator.js';
-import {
-  SubscriptionStatus,
-  BillingCycle,
-  PaymentStatus,
-} from '../../generated/prisma/client.js';
 
 // @UseGuards(AdminGuard)
 @Controller('admin/payments')
@@ -35,45 +30,6 @@ export class PaymentsController {
   @Audit('VIEW_BUSINESSES')
   async getBusinesses() {
     return this.paymentsService.getBusinesses();
-  }
-
-  // ─── Consumer Payments (User → Business via Appointment) ─────────────────
-
-  @Get('consumer-payments')
-  @Audit('VIEW_CONSUMER_PAYMENTS')
-  async getConsumerPayments(
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-    @Query('cursor') cursor?: string,
-  ) {
-    return this.paymentsService.getConsumerPayments(limit, cursor);
-  }
-
-  @Get('consumer-payments/stats')
-  @Audit('VIEW_CONSUMER_PAYMENT_STATS')
-  async getConsumerPaymentStats() {
-    return this.paymentsService.getConsumerPaymentStats();
-  }
-
-  // ─── BusinessUser Payments (Business → Platform) ─────────────────────────
-
-  @Get('business-user-payments')
-  @Audit('VIEW_BUSINESS_USER_PAYMENTS')
-  async getBusinessUserPayments(
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-    @Query('cursor') cursor?: string,
-    @Query('type') type?: 'all' | 'subscription' | 'addon',
-  ) {
-    return this.paymentsService.getBusinessUserPayments(
-      limit,
-      cursor,
-      type ?? 'all',
-    );
-  }
-
-  @Get('business-user-payments/stats')
-  @Audit('VIEW_BUSINESS_USER_PAYMENT_STATS')
-  async getBusinessUserPaymentStats() {
-    return this.paymentsService.getBusinessUserPaymentStats();
   }
 
   // ─── Global Transactions ─────────────────────────────────────────────────
@@ -146,14 +102,14 @@ export class PaymentsController {
   async getAllBusinessSubscriptions(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
-    @Query('status') status?: SubscriptionStatus,
-    @Query('billingCycle') billingCycle?: BillingCycle,
+    @Query('status') status?: string,
+    @Query('billingCycle') billingCycle?: string,
   ) {
     return this.paymentsService.getAllBusinessSubscriptions({
       limit,
       cursor,
-      status,
-      billingCycle,
+      status: status as any,
+      billingCycle: billingCycle as any,
     });
   }
 
@@ -211,6 +167,8 @@ export class PaymentsController {
   }
 
   // ─── Per-Business Routes ──────────────────────────────────────────────────
+  // NOTE: specific sub-paths (e.g. /payments/stats) MUST be declared before
+  // the generic /:id route so NestJS doesn't swallow them as param matches.
 
   @Get(':id')
   @Audit('VIEW_BUSINESS_PAYMENT_DETAILS')
@@ -254,13 +212,13 @@ export class PaymentsController {
     @Param('id') id: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
-    @Query('paymentStatus') paymentStatus?: PaymentStatus,
+    @Query('paymentStatus') paymentStatus?: string,
   ) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getBusinessInvoices(id, {
       limit,
       cursor,
-      paymentStatus,
+      paymentStatus: paymentStatus as any,
     });
   }
 
@@ -311,6 +269,7 @@ export class PaymentsController {
       throw new BadRequestException('Valid amount is required');
     if (!body.invoiceId)
       throw new BadRequestException('Invoice ID is required');
+
     return this.paymentsService.createPaymentIntent(
       businessId,
       body.amount,

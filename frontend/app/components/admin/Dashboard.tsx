@@ -194,30 +194,27 @@ export default function Dashboard() {
       </div>
 
       {/* Main User Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Total Users"
           value={stats.totalUsers}
           icon={<Users className="h-6 w-6 text-primary" />}
           subtitle={`${stats.totalConsumers} consumers, ${stats.totalBusinessUsers} business, ${stats.totalInfluencers} influencers`}
+          tooltip="Total number of registered users across all account types (consumers, business users, and influencers)"
         />
         <StatCard
           title="Active Users"
           value={stats.activeUsers}
           icon={<UserCheck className="h-6 w-6 text-status-active" />}
           subtitle={`${Math.round((stats.activeUsers / stats.totalUsers) * 100)}% of total`}
+          tooltip="Users with confirmed email addresses. For consumers, they must also not be banned."
         />
         <StatCard
-          title="Daily Logins"
-          value={stats.dailyLogins}
-          icon={<LogIn className="h-6 w-6 text-chart-3" />}
-          subtitle={`${stats.dailyConsumerLogins} consumers, ${stats.dailyBusinessLogins} business, ${stats.dailyInfluencerLogins} influencers`}
-        />
-        <StatCard
-          title="Never Logged In"
-          value={stats.neverLoggedIn}
-          icon={<Clock className="h-6 w-6 text-muted-foreground" />}
-          subtitle={`${Math.round((stats.neverLoggedIn / stats.totalUsers) * 100)}% of total`}
+          title="Inactive Users"
+          value={stats.inactiveUsers}
+          icon={<UserX className="h-6 w-6 text-status-inactive" />}
+          subtitle={`${Math.round((stats.inactiveUsers / stats.totalUsers) * 100)}% of total`}
+          tooltip="Users with unconfirmed emails. For consumers, this excludes banned users."
         />
       </div>
 
@@ -227,47 +224,65 @@ export default function Dashboard() {
           title="Consumers"
           value={stats.totalConsumers}
           icon={<User className="h-6 w-6 text-chart-2" />}
-          subtitle={`${stats.activeConsumers} active, ${stats.bannedConsumers} banned`}
+          subtitle={`${stats.activeConsumers} active, ${stats.consumersNeverLoggedIn} never logged in, ${stats.bannedConsumers} banned`}
+          tooltip="Regular platform users. Active: email confirmed & not banned. Banned: manually banned by admins."
         />
         <StatCard
           title="Business Users"
           value={stats.totalBusinessUsers}
           icon={<Building2 className="h-6 w-6 text-chart-1" />}
           subtitle={`${stats.activeBusinessUsers} active, ${stats.businessUsersNeverLoggedIn} never logged in`}
+          tooltip="Business account users. Active: email confirmed."
         />
         <StatCard
           title="Influencers"
           value={stats.totalInfluencers}
           icon={<Star className="h-6 w-6 text-chart-4" />}
           subtitle={`${stats.activeInfluencers} active, ${stats.influencersNeverLoggedIn} never logged in`}
+          tooltip="Influencer account users. Active: email confirmed."
+        />
+      </div>
+
+      {/* Login Stats */}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-2">
+        <StatCard
+          title="Daily Logins"
+          value={stats.dailyLogins}
+          icon={<LogIn className="h-6 w-6 text-chart-3" />}
+          subtitle={`${stats.dailyConsumerLogins} consumers, ${stats.dailyBusinessLogins} business, ${stats.dailyInfluencerLogins} influencers`}
+          tooltip="Number of unique user logins in the last 24 hours (based on refresh token activity)"
+        />
+        <StatCard
+          title="Never Logged In"
+          value={stats.neverLoggedIn}
+          icon={<Clock className="h-6 w-6 text-muted-foreground" />}
+          subtitle={`${Math.round((stats.neverLoggedIn / stats.totalUsers) * 100)}% of total`}
+          tooltip="Users who have never logged in (no refresh tokens associated with their account)"
         />
       </div>
 
       {/* Security & Verification Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Email Verified"
           value={stats.emailConfirmed}
           icon={<Mail className="h-6 w-6 text-green-500" />}
           subtitle={`${Math.round((stats.emailConfirmed / stats.totalUsers) * 100)}% of users`}
+          tooltip="Users who have confirmed their email address through the verification link"
         />
         <StatCard
           title="2FA Enabled"
           value={stats.twoFactorEnabled}
           icon={<Shield className="h-6 w-6 text-blue-500" />}
           subtitle={`${Math.round((stats.twoFactorEnabled / stats.totalUsers) * 100)}% of users`}
+          tooltip="Users who have enabled two-factor authentication for enhanced security"
         />
         <StatCard
           title="Banned Consumers"
           value={stats.bannedConsumers}
           icon={<Ban className="h-6 w-6 text-red-500" />}
           subtitle={`${Math.round((stats.bannedConsumers / stats.totalConsumers) * 100)}% of consumers`}
-        />
-        <StatCard
-          title="Inactive Users"
-          value={stats.inactiveUsers}
-          icon={<UserX className="h-6 w-6 text-status-inactive" />}
-          subtitle={`${Math.round((stats.inactiveUsers / stats.totalUsers) * 100)}% of total`}
+          tooltip="Consumers who have been banned from the platform by administrators"
         />
       </div>
 
@@ -284,24 +299,28 @@ export default function Dashboard() {
               title="Total Businesses"
               value={businessMetrics.totalBusinesses}
               icon={<Building2 className="h-6 w-6 text-primary" />}
+              tooltip="Total number of business entities registered on the platform"
             />
             <StatCard
               title="Verified Businesses"
               value={businessMetrics.verifiedBusinesses}
               icon={<Shield className="h-6 w-6 text-green-500" />}
               subtitle={`${businessMetrics.verificationRate.toFixed(1)}% verified`}
+              tooltip="Businesses that have completed the verification process (manually verified by admins)"
             />
             <StatCard
               title="Active Subscriptions"
               value={businessMetrics.businessesWithSubscriptions}
               icon={<Star className="h-6 w-6 text-yellow-500" />}
               subtitle={`${businessMetrics.subscriptionRate.toFixed(1)}% of businesses`}
+              tooltip="Businesses with at least one active subscription plan"
             />
             <StatCard
               title="Payout Info Set"
               value={businessMetrics.businessesWithPayoutInfo}
               icon={<Users className="h-6 w-6 text-blue-500" />}
               subtitle={`${businessMetrics.payoutInfoRate.toFixed(1)}% of businesses`}
+              tooltip="Businesses that have configured their payout information for receiving payments"
             />
           </div>
         </>

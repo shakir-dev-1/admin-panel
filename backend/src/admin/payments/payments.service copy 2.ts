@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -22,15 +19,6 @@ import {
   BillingCycle,
 } from '../../generated/prisma/client.js';
 
-// Define interfaces for the price structure
-export interface SubscriptionPrice {
-  amount: number;
-  currency: string;
-  interval: 'month' | 'year' | 'MONTH' | 'YEAR';
-  price?: number; // Some might use 'price' instead of 'amount'
-  [key: string]: any; // Allow additional fields
-}
-
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -39,60 +27,6 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     @Inject('STRIPE_CLIENT') private readonly stripe: Stripe,
   ) {}
-
-  private formatPrice(price: SubscriptionPrice | null | undefined): string {
-    if (!price) return 'N/A';
-
-    const amount = (price.amount || price.price || 0) / 100;
-    const currency = price.currency || 'USD';
-    const interval = price.interval || 'month';
-
-    // Format based on interval
-    if (interval === 'year' || interval === 'YEAR') {
-      return `${currency} ${amount}/year (${currency} ${(amount / 12).toFixed(2)}/month)`;
-    }
-
-    return `${currency} ${amount}/${interval}`;
-  }
-
-  private parsePrices(pricesJson: Prisma.JsonValue): SubscriptionPrice[] {
-    if (!pricesJson) return [];
-
-    try {
-      // Handle both stringified JSON and parsed JSON
-      const prices =
-        typeof pricesJson === 'string' ? JSON.parse(pricesJson) : pricesJson;
-
-      if (Array.isArray(prices)) {
-        return prices as SubscriptionPrice[];
-      }
-
-      // If it's a single price object, wrap in array
-      if (prices && typeof prices === 'object') {
-        return [prices as SubscriptionPrice];
-      }
-
-      return [];
-    } catch (e) {
-      this.logger.error(`Failed to parse prices: ${e.message}`);
-      return [];
-    }
-  }
-
-  private findPriceByBillingCycle(
-    prices: SubscriptionPrice[],
-    billingCycle?: BillingCycle | null,
-  ): SubscriptionPrice | null {
-    if (!prices.length || !billingCycle) return prices[0] || null;
-
-    const cycle = billingCycle.toString().toLowerCase();
-
-    const matchedPrice = prices.find(
-      (p) => p.interval?.toLowerCase() === cycle,
-    );
-
-    return matchedPrice || prices[0] || null;
-  }
 
   // ─── Businesses ────────────────────────────────────────────────────────────
 
@@ -121,12 +55,6 @@ export class PaymentsService {
             endDate: business.subscription[0].endDate,
             plan: business.subscription[0].subscription?.title,
             paymentStatus: business.subscription[0].paymentStatus,
-            customerTransactionId:
-              business.subscription[0].customerTransactionId,
-            // Add parsed prices
-            prices: this.parsePrices(
-              business.subscription[0].subscription?.prices,
-            ),
           }
         : null,
     }));
@@ -160,10 +88,6 @@ export class PaymentsService {
             paymentStatus: business.subscription[0].paymentStatus,
             customerTransactionId:
               business.subscription[0].customerTransactionId,
-            // Add parsed prices
-            prices: this.parsePrices(
-              business.subscription[0].subscription?.prices,
-            ),
           }
         : null,
     };
@@ -176,28 +100,19 @@ export class PaymentsService {
       where: { businessId },
       include: {
         subscription: true,
-        history: {
-          orderBy: { createdAt: 'desc' },
-        },
+        history: { orderBy: { createdAt: 'desc' } },
       },
     });
 
     if (!businessSub)
       throw new NotFoundException('No subscription found for this business');
 
-    // Parse subscription prices
-    const prices = this.parsePrices(businessSub.subscription?.prices);
-    const currentPrice = this.findPriceByBillingCycle(
-      prices,
-      businessSub.billingCycle,
-    );
-
     let stripeSubscription: Stripe.Response<Stripe.Subscription> | null = null;
     if (businessSub.orderId) {
       try {
         stripeSubscription = await this.stripe.subscriptions.retrieve(
           businessSub.orderId,
-          { expand: ['plan.product', 'items.data.price'] },
+          { expand: ['plan.product'] },
         );
       } catch (error) {
         this.logger.error(
@@ -206,60 +121,27 @@ export class PaymentsService {
       }
     }
 
-    return {
-      ...businessSub,
-      subscription: businessSub.subscription
-        ? {
-            ...businessSub.subscription,
-            prices, // All available prices
-            currentPrice, // The price matching current billing cycle
-          }
-        : null,
-      stripeSubscription,
-      // Add calculated fields
-      monthlyPrice:
-        prices.find((p) => p.interval?.toLowerCase() === 'month')?.amount ||
-        prices.find((p) => p.interval?.toLowerCase() === 'month')?.price,
-      yearlyPrice:
-        prices.find((p) => p.interval?.toLowerCase() === 'year')?.amount ||
-        prices.find((p) => p.interval?.toLowerCase() === 'year')?.price,
-    };
+    return { ...businessSub, stripeSubscription };
   }
 
+  /**
+   * Returns all subscription plans with their prices and features.
+   */
   async getAllSubscriptionPlans() {
-    const plans = await this.prisma.subscription.findMany({
+    return this.prisma.subscription.findMany({
       include: {
         businessSubscriptions: {
-          select: {
-            id: true,
-            status: true,
-            billingCycle: true,
-            businessId: true,
-          },
+          select: { id: true, status: true, billingCycle: true },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
-
-    // Parse and format prices for each plan
-    return plans.map((plan) => {
-      const prices = this.parsePrices(plan.prices);
-
-      return {
-        ...plan,
-        prices: prices.map((price) => ({
-          ...price,
-          // Ensure price is in a consistent format
-          amount: price.amount || price.price,
-          currency: price.currency || 'USD',
-          interval: price.interval || 'month',
-        })),
-        // Also provide formatted display strings
-        displayPrices: prices.map((p) => this.formatPrice(p)),
-      };
-    });
   }
 
+  /**
+   * Returns all business subscriptions across the platform with optional
+   * filtering by status or billing cycle.
+   */
   async getAllBusinessSubscriptions(filters?: {
     status?: SubscriptionStatus;
     billingCycle?: BillingCycle;
@@ -286,79 +168,25 @@ export class PaymentsService {
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        subscription: {
-          select: {
-            id: true,
-            title: true,
-            prices: true,
-          },
-        },
-        business: {
-          select: {
-            id: true,
-            name: true,
-            stripeAccountId: true,
-            email: true,
-            members: {
-              where: { role: { name: 'OWNER' } },
-              take: 1,
-              select: {
-                businessUser: {
-                  select: {
-                    id: true,
-                    email: true,
-                    fullName: true,
-                    phoneNumber: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        history: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
+        subscription: { select: { id: true, title: true } },
+        business: { select: { id: true, name: true, stripeAccountId: true } },
+        history: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
-    });
-
-    // Enhance each record with price information
-    const enhancedRecords = records.map((record) => {
-      const prices = this.parsePrices(record.subscription?.prices);
-      const currentPrice = this.findPriceByBillingCycle(
-        prices,
-        record.billingCycle,
-      );
-
-      return {
-        ...record,
-        subscription: record.subscription
-          ? {
-              ...record.subscription,
-              prices, // All prices
-            }
-          : null,
-        currentPrice, // Price for current billing cycle
-        priceAmount: currentPrice
-          ? currentPrice.amount || currentPrice.price || 0
-          : null,
-        priceCurrency: currentPrice?.currency || 'USD',
-        priceInterval:
-          currentPrice?.interval || record.billingCycle?.toLowerCase(),
-        formattedPrice: currentPrice ? this.formatPrice(currentPrice) : null,
-      };
     });
 
     const nextCursor =
       records.length > 0 ? records[records.length - 1].id : undefined;
 
     return {
-      data: enhancedRecords,
+      data: records,
       hasMore: records.length === limit,
       nextCursor,
     };
   }
 
+  /**
+   * Returns the full subscription history for a given business subscription.
+   */
   async getSubscriptionHistory(businessSubscriptionId: string) {
     const record = await this.prisma.businessSubscription.findUnique({
       where: { id: businessSubscriptionId },
@@ -371,19 +199,7 @@ export class PaymentsService {
 
     if (!record) throw new NotFoundException('Business subscription not found');
 
-    // Add price information
-    const prices = this.parsePrices(record.subscription?.prices);
-    const currentPrice = this.findPriceByBillingCycle(
-      prices,
-      record.billingCycle,
-    );
-
-    return {
-      ...record,
-      prices,
-      currentPrice,
-      formattedPrice: currentPrice ? this.formatPrice(currentPrice) : null,
-    };
+    return record;
   }
 
   async cancelSubscription(businessId: string) {
@@ -429,6 +245,10 @@ export class PaymentsService {
 
   // ─── Invoices ──────────────────────────────────────────────────────────────
 
+  /**
+   * Returns all invoices for a given business, including appointment and
+   * client details.
+   */
   async getBusinessInvoices(
     businessId: string,
     filters?: {
@@ -477,6 +297,9 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Returns a single invoice by ID with full relational details.
+   */
   async getInvoice(invoiceId: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -494,6 +317,10 @@ export class PaymentsService {
     return invoice;
   }
 
+  /**
+   * Returns aggregate invoice stats per business: total due, total paid, unpaid
+   * count, etc.
+   */
   async getInvoiceStats(businessId?: string) {
     const where: Prisma.InvoiceWhereInput = {};
     if (businessId) where.businessId = businessId;
@@ -528,454 +355,7 @@ export class PaymentsService {
     };
   }
 
-  // ─── Consumer Payments (User → Business via Appointment) ───────────────────
-
-  async getConsumerPayments(limit = 50, cursor?: string) {
-    this.logger.log(
-      `Fetching consumer payments with limit: ${limit}, cursor: ${cursor}`,
-    );
-
-    // Pagination setup — same as before
-    const where: Prisma.TransactionWhereInput = {};
-
-    if (cursor) {
-      const cur = await this.prisma.transaction.findUnique({
-        where: { id: cursor },
-        select: { createdAt: true },
-      });
-      if (cur) {
-        where.createdAt = { lt: cur.createdAt };
-      }
-    }
-
-    // Fetch transactions
-    const transactions = await this.prisma.transaction.findMany({
-      take: limit,
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        business: { select: { id: true, name: true } },
-        invoice: {
-          select: {
-            id: true,
-            stripePaymentIntentId: true, // ← Stripe ID added here
-            appointment: {
-              include: {
-                client: {
-                  include: {
-                    user: {
-                      select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                        phoneNumber: true,
-                        username: true,
-                      },
-                    },
-                  },
-                },
-                businessService: {
-                  select: {
-                    id: true,
-                    price: true,
-                    service: { select: { title: true } },
-                  },
-                },
-                businessPackage: { select: { id: true, title: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    this.logger.log(`Found ${transactions.length} transactions`);
-
-    const filteredTransactions = transactions.filter(
-      (t) => t.invoice?.appointment?.client != null,
-    );
-
-    this.logger.log(
-      `Filtered transactions with client data: ${filteredTransactions.length}`,
-    );
-
-    const data = filteredTransactions.map((t) => {
-      const client = t.invoice?.appointment?.client;
-      const user = client?.user;
-
-      return {
-        id: t.id,
-        amount: t.amountSent,
-        refundAmount: t.amountReceived,
-        currency: 'USD',
-        status: t.transactionStatus,
-        paymentStatus: t.paymentStatus,
-        type: t.transactionType,
-        businessId: t.businessId,
-        businessName: t.business?.name,
-        invoiceId: t.invoiceId,
-        stripePaymentIntentId: t.invoice?.stripePaymentIntentId ?? null, // ← included
-        userId: user?.id ?? client?.userId ?? null,
-        consumerEmail: user?.email ?? client?.email ?? null,
-        consumerName: user
-          ? `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
-            client?.fullName
-          : (client?.fullName ?? null),
-        consumerPhone: user?.phoneNumber ?? client?.phoneNumber ?? null,
-        consumerUsername: user?.username ?? null,
-        serviceName:
-          t.invoice?.appointment?.businessService?.service?.title ?? null,
-        packageName: t.invoice?.appointment?.businessPackage?.title ?? null,
-        appointmentStart: t.invoice?.appointment?.start?.toISOString() ?? null,
-        createdAt: t.createdAt.toISOString(),
-      };
-    });
-
-    const nextCursor =
-      transactions.length > 0
-        ? transactions[transactions.length - 1].id
-        : undefined;
-
-    return {
-      data,
-      hasMore: transactions.length === limit,
-      nextCursor,
-    };
-  }
-
-  async getConsumerPaymentStats() {
-    // Define the base condition for consumer payments
-    const consumerPaymentCondition = {
-      invoice: {
-        appointment: {
-          client: {
-            isNot: undefined,
-          },
-        },
-      },
-    };
-
-    const [
-      total,
-      completed,
-      refundedTransactions,
-      failed,
-      byPaymentStatus,
-      byMethod,
-    ] = await Promise.all([
-      this.prisma.transaction.aggregate({
-        where: consumerPaymentCondition,
-        _count: { id: true },
-        _sum: { amountSent: true },
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          ...consumerPaymentCondition,
-          transactionStatus: TransactionStatus.PAID,
-        },
-        _sum: { amountSent: true },
-        _count: { id: true },
-      }),
-      // Get all refunded transactions to calculate actual refund amount
-      this.prisma.transaction.findMany({
-        where: {
-          ...consumerPaymentCondition,
-          paymentStatus: TransactionPaymentStatus.REFUNDED,
-        },
-        select: {
-          amountSent: true,
-          amountReceived: true,
-        },
-      }),
-      this.prisma.transaction.count({
-        where: {
-          ...consumerPaymentCondition,
-          transactionStatus: TransactionStatus.FAILED,
-        },
-      }),
-      this.prisma.transaction.groupBy({
-        by: ['paymentStatus'],
-        where: consumerPaymentCondition,
-        _count: true,
-        _sum: { amountSent: true },
-      }),
-      this.prisma.invoice.groupBy({
-        by: ['paymentMethod'],
-        where: {
-          appointment: {
-            client: {
-              isNot: undefined,
-            },
-          },
-        },
-        _count: true,
-        _sum: { amountDue: true, amountPaid: true },
-      }),
-    ]);
-
-    // Calculate total refunded amount (amountSent - amountReceived)
-    const totalRefunded = refundedTransactions.reduce(
-      (sum, t) => sum + (t.amountSent - t.amountReceived),
-      0,
-    );
-
-    return {
-      totalTransactions: total._count.id,
-      totalVolume: total._sum.amountSent ?? 0,
-      completedRevenue: completed._sum.amountSent ?? 0,
-      completedCount: completed._count.id,
-      totalRefunded: totalRefunded,
-      refundedCount: refundedTransactions.length,
-      failedTransactions: failed,
-      byPaymentStatus,
-      byMethod,
-    };
-  }
-
-  // ─── BusinessUser Payments (Business → Platform) ───────────────────────────
-
-  async getBusinessUserPayments(
-    limit = 50,
-    cursor?: string,
-    type: 'all' | 'subscription' | 'addon' = 'all',
-  ) {
-    // Fetch subscriptions and/or add-ons in parallel, then merge & sort
-    const [subs, addons] = await Promise.all([
-      type !== 'addon'
-        ? this.prisma.businessSubscription.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-              subscription: { select: { id: true, title: true, prices: true } },
-              business: {
-                select: {
-                  id: true,
-                  name: true,
-                  members: {
-                    include: {
-                      businessUser: {
-                        select: {
-                          id: true,
-                          email: true,
-                          fullName: true,
-                          phoneNumber: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-              history: { orderBy: { createdAt: 'desc' }, take: 1 },
-            },
-          })
-        : Promise.resolve([]),
-
-      type !== 'subscription'
-        ? this.prisma.businessAddOn.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-              business: {
-                select: {
-                  id: true,
-                  name: true,
-                  members: {
-                    include: {
-                      businessUser: {
-                        select: {
-                          id: true,
-                          email: true,
-                          fullName: true,
-                          phoneNumber: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-              purchaseBy: {
-                include: {
-                  businessUser: {
-                    select: {
-                      id: true,
-                      email: true,
-                      fullName: true,
-                      phoneNumber: true,
-                    },
-                  },
-                },
-              },
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    // Helper function to get the first business user from members
-    const getFirstBusinessUser = (business: any) => {
-      if (business?.members && business.members.length > 0) {
-        return business.members[0]?.businessUser || null;
-      }
-      return null;
-    };
-
-    // Normalise to a unified shape
-    type UnifiedEntry = {
-      id: string;
-      entryType: 'subscription' | 'addon';
-      businessId: string;
-      businessName: string;
-      businessUserEmail: string | null;
-      businessUserName: string | null;
-      businessUserPhone: string | null;
-      businessUserId: string | null;
-      description: string;
-      amount: number | null;
-      currency: string;
-      status: string;
-      billingCycle?: string;
-      paymentStatus?: string | null;
-      createdAt: string;
-      priceInfo?: any; // Add price info for subscriptions
-    };
-
-    const unified: UnifiedEntry[] = [
-      ...subs.map((s) => {
-        const businessUser = getFirstBusinessUser(s.business);
-        const prices = this.parsePrices(s.subscription?.prices);
-        const currentPrice = this.findPriceByBillingCycle(
-          prices,
-          s.billingCycle,
-        );
-
-        return {
-          id: s.id,
-          entryType: 'subscription' as const,
-          businessId: s.businessId,
-          businessName: s.business?.name ?? '—',
-          businessUserEmail: businessUser?.email ?? null,
-          businessUserName: businessUser?.fullName ?? null,
-          businessUserPhone: businessUser?.phoneNumber ?? null,
-          businessUserId: businessUser?.id ?? null,
-          description: s.subscription?.title ?? 'Subscription',
-          amount: currentPrice
-            ? currentPrice.amount || currentPrice.price || 0
-            : null,
-          currency: currentPrice?.currency || 'USD',
-          status: s.status,
-          billingCycle: s.billingCycle,
-          paymentStatus: s.paymentStatus,
-          createdAt: s.createdAt.toISOString(),
-          priceInfo: currentPrice,
-        };
-      }),
-      ...addons.map((a) => {
-        const businessUser =
-          a.purchaseBy?.businessUser || getFirstBusinessUser(a.business);
-        return {
-          id: a.id,
-          entryType: 'addon' as const,
-          businessId: a.businessId,
-          businessName: a.business?.name ?? '—',
-          businessUserEmail: businessUser?.email ?? null,
-          businessUserName: businessUser?.fullName ?? null,
-          businessUserPhone: businessUser?.phoneNumber ?? null,
-          businessUserId: businessUser?.id ?? null,
-          description: `${a.type} Add-On`,
-          amount: a.price,
-          currency: a.currency,
-          status: a.status,
-          billingCycle: undefined,
-          paymentStatus: undefined,
-          createdAt: a.createdAt.toISOString(),
-        };
-      }),
-    ];
-
-    // Sort merged list by createdAt desc
-    unified.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-
-    let startIdx = 0;
-    if (cursor) {
-      const idx = unified.findIndex((e) => e.id === cursor);
-      if (idx !== -1) startIdx = idx + 1;
-    }
-
-    const page = unified.slice(startIdx, startIdx + limit);
-    const nextCursor =
-      page.length === limit ? page[page.length - 1].id : undefined;
-
-    return {
-      data: page,
-      hasMore: page.length === limit,
-      nextCursor,
-    };
-  }
-
-  async getBusinessUserPaymentStats() {
-    const [subByStatus, subTotal, addonByStatus, addonByType, addonTotal] =
-      await Promise.all([
-        this.prisma.businessSubscription.groupBy({
-          by: ['status'],
-          _count: true,
-        }),
-        this.prisma.businessSubscription.count(),
-        this.prisma.businessAddOn.groupBy({
-          by: ['status'],
-          _count: true,
-          _sum: { price: true },
-        }),
-        this.prisma.businessAddOn.groupBy({
-          by: ['type'],
-          _count: true,
-          _sum: { price: true },
-        }),
-        this.prisma.businessAddOn.aggregate({
-          _sum: { price: true },
-          _count: { id: true },
-        }),
-      ]);
-
-    // Get subscription revenue by plan
-    const subscriptions = await this.prisma.businessSubscription.findMany({
-      where: { status: 'ACTIVE' },
-      include: {
-        subscription: { select: { id: true, title: true, prices: true } },
-      },
-    });
-
-    let monthlyRecurringRevenue = 0;
-    subscriptions.forEach((sub) => {
-      const prices = this.parsePrices(sub.subscription?.prices);
-      const price = this.findPriceByBillingCycle(prices, sub.billingCycle);
-      if (price) {
-        const amount = price.amount || price.price || 0;
-        if (sub.billingCycle === 'YEAR') {
-          monthlyRecurringRevenue += amount / 12;
-        } else {
-          monthlyRecurringRevenue += amount;
-        }
-      }
-    });
-
-    return {
-      subscriptions: {
-        total: subTotal,
-        byStatus: subByStatus,
-        monthlyRecurringRevenue:
-          Math.round(monthlyRecurringRevenue * 100) / 100,
-      },
-      addOns: {
-        total: addonTotal._count.id,
-        totalRevenue: addonTotal._sum.price ?? 0,
-        byStatus: addonByStatus,
-        byType: addonByType,
-      },
-    };
-  }
-
-  // ─── Legacy global transaction methods ─────────────────────────────────────
+  // ─── Transactions ──────────────────────────────────────────────────────────
 
   async getPayments(businessId: string) {
     const business = await this.prisma.business.findUnique({
@@ -1170,40 +550,18 @@ export class PaymentsService {
       orderBy: { createdAt: 'desc' },
       include: {
         business: { select: { id: true, name: true } },
-        invoice: {
-          include: {
-            appointment: {
-              include: {
-                client: {
-                  include: { user: { select: { id: true, email: true } } },
-                },
-              },
-            },
-          },
-        },
       },
     });
 
-    const formattedData = refundedTransactions.map((t) => {
-      const client = t.invoice?.appointment?.client;
-      const isConsumer = !!client?.userId;
-      const actualRefundedAmount = t.amountSent - t.amountReceived; // Calculate this
-
-      return {
-        id: t.id,
-        amount: t.amountSent,
-        refundAmount: actualRefundedAmount, // Now shows the actual refunded amount
-        businessId: t.businessId,
-        businessName: t.business?.name,
-        status: t.transactionStatus,
-        payerType: isConsumer ? ('consumer' as const) : ('walk_in' as const),
-        clientName: client?.fullName ?? null,
-        consumerEmail: isConsumer
-          ? (client?.user?.email ?? client?.email)
-          : null,
-        createdAt: t.createdAt.toISOString(),
-      };
-    });
+    const formattedData = refundedTransactions.map((t) => ({
+      id: t.id,
+      amount: t.amountSent,
+      refundAmount: t.amountReceived,
+      businessId: t.businessId,
+      businessName: t.business?.name,
+      status: t.transactionStatus,
+      createdAt: t.createdAt.toISOString(),
+    }));
 
     const nextCursor =
       refundedTransactions.length > 0
@@ -1223,25 +581,23 @@ export class PaymentsService {
     return this.prisma.$transaction(async (prisma) => {
       const transaction = await prisma.transaction.findUnique({
         where: { id: transactionId },
-        include: { invoice: true },
+        include: { business: true },
       });
 
-      if (!transaction) {
-        throw new NotFoundException('Transaction not found');
-      }
+      if (!transaction) throw new NotFoundException('Transaction not found');
 
-      if (transaction.paymentStatus === TransactionPaymentStatus.REFUNDED) {
+      if (transaction.transactionStatus !== TransactionStatus.PAID) {
         throw new HttpException(
           {
             statusCode: HttpStatus.BAD_REQUEST,
-            error: 'ALREADY_REFUNDED',
-            message: 'This transaction has already been refunded',
+            error: 'INVALID_STATUS',
+            message: `Cannot refund: transaction status is ${transaction.transactionStatus}`,
           },
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      if (!transaction.invoice) {
+      if (!transaction.invoiceId) {
         throw new HttpException(
           {
             statusCode: HttpStatus.BAD_REQUEST,
@@ -1252,9 +608,11 @@ export class PaymentsService {
         );
       }
 
-      const invoice = transaction.invoice;
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: transaction.invoiceId },
+      });
 
-      if (!invoice.stripePaymentIntentId) {
+      if (!invoice?.stripePaymentIntentId) {
         throw new HttpException(
           {
             statusCode: HttpStatus.BAD_REQUEST,
@@ -1274,19 +632,19 @@ export class PaymentsService {
       } catch (error: any) {
         this.logger.error(`Failed to create Stripe refund: ${error.message}`);
 
-        if (
-          error.type === 'StripeInvalidRequestError' &&
-          error.code === 'resource_missing'
-        ) {
-          throw new HttpException(
-            {
-              statusCode: HttpStatus.BAD_REQUEST,
-              error: 'PAYMENT_INTENT_NOT_FOUND',
-              message: 'Payment intent not found in Stripe.',
-              stripeMessage: error.message,
-            },
-            HttpStatus.BAD_REQUEST,
-          );
+        if (error.type === 'StripeInvalidRequestError') {
+          if (error.code === 'resource_missing') {
+            throw new HttpException(
+              {
+                statusCode: HttpStatus.BAD_REQUEST,
+                error: 'PAYMENT_INTENT_NOT_FOUND',
+                message:
+                  'Payment intent not found in Stripe. The payment may have been processed in a different environment or deleted.',
+                stripeMessage: error.message,
+              },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
         }
 
         if (error.code === 'charge_already_refunded') {
@@ -1295,6 +653,18 @@ export class PaymentsService {
               statusCode: HttpStatus.BAD_REQUEST,
               error: 'ALREADY_REFUNDED',
               message: 'This payment has already been refunded.',
+              stripeMessage: error.message,
+            },
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        if (error.code === 'refund_amount_invalid') {
+          throw new HttpException(
+            {
+              statusCode: HttpStatus.BAD_REQUEST,
+              error: 'INVALID_AMOUNT',
+              message: 'The refund amount is invalid.',
               stripeMessage: error.message,
             },
             HttpStatus.BAD_REQUEST,
@@ -1311,28 +681,13 @@ export class PaymentsService {
         );
       }
 
-      // 1) Update the transaction
       await prisma.transaction.update({
         where: { id: transactionId },
         data: {
-          transactionStatus: TransactionStatus.PAID, // keep paid because refund is separate
+          transactionStatus: TransactionStatus.FAILED,
           paymentStatus: TransactionPaymentStatus.REFUNDED,
         },
       });
-
-      this.logger.log(`Updated transaction ${transactionId} to REFUNDED`);
-
-      // 2) Update the invoice
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          paymentStatus: PaymentStatus.REFUNDED,
-          // Optionally reset amountPaid to 0
-          amountPaid: 0,
-        },
-      });
-
-      this.logger.log(`Updated invoice ${invoice.id} to REFUNDED`);
 
       this.logger.log(
         `Successfully refunded transaction ${transactionId}, refund ID: ${refundResult.id}`,
@@ -1344,6 +699,10 @@ export class PaymentsService {
 
   // ─── Payout Info ───────────────────────────────────────────────────────────
 
+  /**
+   * Returns the payout bank account info for a business, masking sensitive
+   * fields (CNIC, MSISDN, account number) since they are stored encrypted.
+   */
   async getBusinessPayoutInfo(businessId: string) {
     const info = await this.prisma.businessPayoutInfo.findUnique({
       where: { businessId },
@@ -1358,15 +717,17 @@ export class PaymentsService {
       bank: info.bank,
       accountTitle: info.accountTitle,
       countryCode: info.countryCode,
-      // Mask sensitive data
-      msisdn: info.msisdn ? '••••' + info.msisdn.slice(-4) : null,
-      cnic: info.cnic ? '••••' + info.cnic.slice(-4) : null,
-      accountNumber: info.accountNumber
-        ? '••••' + info.accountNumber.slice(-4)
-        : null,
+      // Encrypted fields are returned as-is for admin; decryption happens in
+      // dedicated secure endpoints, not here.
+      msisdn: info.msisdn,
+      cnic: info.cnic,
+      accountNumber: info.accountNumber,
     };
   }
 
+  /**
+   * Returns all payout info records across the platform with bank details.
+   */
   async getAllPayoutInfo(limit = 50, cursor?: string) {
     const where: Prisma.BusinessPayoutInfoWhereInput = {};
 
@@ -1398,12 +759,18 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Returns all banks available for payout configuration.
+   */
   async getBanks() {
     return this.prisma.bank.findMany({ orderBy: { bankName: 'asc' } });
   }
 
   // ─── Add-Ons ───────────────────────────────────────────────────────────────
 
+  /**
+   * Returns all business add-ons (e.g. EMPLOYEE, LOCATION) across the platform.
+   */
   async getAllAddOns(limit = 50, cursor?: string) {
     const where: Prisma.BusinessAddOnWhereInput = {};
 
@@ -1442,6 +809,9 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Returns add-ons for a specific business.
+   */
   async getBusinessAddOns(businessId: string) {
     return this.prisma.businessAddOn.findMany({
       where: { businessId },
@@ -1470,10 +840,7 @@ export class PaymentsService {
     if (!business.stripeAccountId) return [];
 
     try {
-      const disputes = await this.stripe.disputes.list({
-        limit: 100,
-        expand: ['data.charge', 'data.payment_intent'],
-      });
+      const disputes = await this.stripe.disputes.list({ limit: 100 });
       return disputes.data;
     } catch (error) {
       this.logger.error(`Failed to retrieve disputes: ${error.message}`);
@@ -1486,19 +853,11 @@ export class PaymentsService {
       const disputes = await this.stripe.disputes.list({
         limit,
         starting_after,
-        expand: ['data.charge', 'data.payment_intent'],
       });
-      return {
-        data: disputes.data,
-        hasMore: disputes.has_more,
-        nextCursor:
-          disputes.data.length > 0
-            ? disputes.data[disputes.data.length - 1].id
-            : undefined,
-      };
+      return disputes.data;
     } catch (error: any) {
       this.logger.error(`Failed to retrieve disputes: ${error.message}`);
-      return { data: [], hasMore: false, nextCursor: undefined };
+      return [];
     }
   }
 
@@ -1508,12 +867,11 @@ export class PaymentsService {
     const [
       stats,
       succeededTotal,
-      refundedTransactions,
+      refundedTotal,
       failedCount,
       subscriptions,
       addOnStats,
       invoiceStats,
-      subscriptionPlans,
     ] = await Promise.all([
       this.prisma.transaction.aggregate({
         _sum: { amountSent: true, amountReceived: true },
@@ -1523,13 +881,9 @@ export class PaymentsService {
         where: { transactionStatus: TransactionStatus.PAID },
         _sum: { amountSent: true },
       }),
-      // Get all refunded transactions to calculate actual refund amount
-      this.prisma.transaction.findMany({
+      this.prisma.transaction.aggregate({
         where: { paymentStatus: TransactionPaymentStatus.REFUNDED },
-        select: {
-          amountSent: true,
-          amountReceived: true,
-        },
+        _sum: { amountReceived: true },
       }),
       this.prisma.transaction.count({
         where: { transactionStatus: TransactionStatus.FAILED },
@@ -1538,83 +892,29 @@ export class PaymentsService {
         by: ['status'],
         _count: true,
       }),
+      // Add-on revenue
       this.prisma.businessAddOn.groupBy({
         by: ['status'],
         _count: true,
         _sum: { price: true },
       }),
+      // Invoice payment method breakdown
       this.prisma.invoice.groupBy({
         by: ['paymentMethod'],
         _count: true,
         _sum: { amountDue: true, amountPaid: true },
       }),
-      this.prisma.subscription.findMany({
-        select: {
-          id: true,
-          title: true,
-          prices: true,
-          businessSubscriptions: {
-            where: { status: 'ACTIVE' },
-            select: {
-              billingCycle: true,
-            },
-          },
-        },
-      }),
     ]);
-
-    // Calculate total refunded amount (amountSent - amountReceived)
-    const totalRefunded = refundedTransactions.reduce(
-      (sum, t) => sum + (t.amountSent - t.amountReceived),
-      0,
-    );
-
-    // Calculate MRR (Monthly Recurring Revenue) from subscriptions
-    let mrr = 0;
-    const planDistribution = subscriptionPlans.map((plan) => {
-      const prices = this.parsePrices(plan.prices);
-      const activeCount = plan.businessSubscriptions.length;
-
-      let planMrr = 0;
-      plan.businessSubscriptions.forEach((sub) => {
-        const price = this.findPriceByBillingCycle(prices, sub.billingCycle);
-        if (price) {
-          const amount = price.amount || price.price || 0;
-          if (sub.billingCycle === 'YEAR') {
-            planMrr += amount / 12;
-          } else {
-            planMrr += amount;
-          }
-        }
-      });
-
-      mrr += planMrr;
-
-      return {
-        planId: plan.id,
-        planName: plan.title,
-        count: activeCount,
-        mrr: Math.round(planMrr * 100) / 100,
-        priceRange: prices.map((p) => ({
-          interval: p.interval,
-          amount: (p.amount || p.price || 0) / 100,
-          currency: p.currency || 'USD',
-          formatted: this.formatPrice(p),
-        })),
-      };
-    });
 
     return {
       totalTransactions: stats._count.id,
-      completedRevenue: succeededTotal._sum.amountSent ?? 0,
-      totalVolume: stats._sum.amountSent ?? 0,
-      totalRefunded: totalRefunded,
+      completedRevenue: (succeededTotal._sum.amountSent ?? 0) / 100,
+      totalVolume: (stats._sum.amountSent ?? 0) / 100,
+      totalRefunded: (refundedTotal._sum.amountReceived ?? 0) / 100,
       failedTransactions: failedCount,
       subscriptionStats: subscriptions,
       addOnStats,
       invoiceStats,
-      mrr: Math.round(mrr * 100) / 100,
-      activeSubscriptionsByPlan: planDistribution,
     };
   }
 

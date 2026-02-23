@@ -473,7 +473,7 @@ export default function InfluencerDetail() {
                       <th>Business</th>
                       <th>Status</th>
                       <th>Received Date</th>
-                      <th>Actions</th>
+                      {/* <th>Actions</th> */}
                     </tr>
                   </thead>
                   <tbody>
@@ -517,7 +517,7 @@ export default function InfluencerDetail() {
                           <td>
                             {safeFormatDate(offer.createdAt, "MMM d, yyyy")}
                           </td>
-                          <td>
+                          {/* <td>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -529,7 +529,7 @@ export default function InfluencerDetail() {
                             >
                               View Business
                             </Button>
-                          </td>
+                          </td> */}
                         </tr>
                       ))
                     )}

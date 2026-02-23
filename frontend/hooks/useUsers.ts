@@ -74,6 +74,18 @@ export type User = {
   }>;
 };
 
+export type SubscriptionStatus = 'ACTIVE' | 'INACTIVE' | 'TRIAL' | 'CANCELLED';
+export type BillingCycle = 'YEAR' | 'MONTH';
+export type PaymentStatus = 'PAID' | 'PREPAID' | 'UNPAID' | 'FAILED' | 'REFUNDED';
+export type JsonValue = 
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+
 export type BusinessUser = {
   id: string;
   email: string;
@@ -129,6 +141,26 @@ export type BusinessUser = {
     role: string; // Role name (OWNER, EMPLOYEE, ADMIN, USER)
     joinedAt: string; // When they joined the business
     memberId: string; // BusinessMember ID
+    subscriptions: Array<{
+      id: string;
+      status: SubscriptionStatus;
+      billingCycle: BillingCycle;
+      startDate: Date | null;
+      endDate: Date | null;
+      paymentStatus: PaymentStatus | null;
+      isTrialUsed: boolean | null;
+      cancelAtPeriodEnd: boolean | null;
+      canceledDate: Date | null;
+      orderId: string | null;
+      plan: {
+        id: string;
+        title: string;
+        prices: JsonValue;
+        features: JsonValue;
+        trialPeriodDays: number | null;
+        country: string;
+      };
+    }>;
   }>;
 
   businessUserSettings: {
@@ -294,6 +326,19 @@ export type InfluencerDetails = Influencer & {
     acceptanceRate: number;
   };
 };
+
+export interface CancelSubscriptionResponse {
+  success: boolean;
+  message: string;
+  subscription: {
+    id: string;
+    status: string;
+    cancelAtPeriodEnd: boolean;
+    endDate: string | null;
+    plan: string;
+  };
+  stripeResult?: any;
+}
 
 // React Query configuration
 const DEFAULT_QUERY_OPTIONS = {
@@ -820,6 +865,52 @@ export function useUsersManagement() {
     return response;
   };
 
+   const cancelSubscription = async (
+    businessId: string,
+    options?: {
+      immediate?: boolean;
+    }
+  ): Promise<CancelSubscriptionResponse> => {
+    if (!token) throw new Error("No authentication token");
+
+    const endpoint = options?.immediate
+      ? `/admin/business/users/${businessId}/subscription/immediately-cancel`
+      : `/admin/business/users/${businessId}/subscription/cancel`;
+
+    const response = await fetchWithAuth<CancelSubscriptionResponse>(
+      endpoint,
+      token,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    // Invalidate business user cache and any subscription-related queries
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.users.businessUser(businessId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.users.business(),
+    });
+    
+    return response;
+  };
+
+  // Get subscription details for a business
+  const getBusinessSubscription = async (businessId: string) => {
+    if (!token) throw new Error("No authentication token");
+
+    const response = await fetchWithAuth(
+      `/admin/business/users/${businessId}/subscription`,
+      token,
+    );
+
+    return response;
+  };
+
   return {
     resetPassword,
     changeEmail,
@@ -830,9 +921,13 @@ export function useUsersManagement() {
     changeInfluencerEmail,
     changeInfluencerPhone,
     changeInfluencerStatus,
-    getInfluencerById,
+    getInfluencerById,    
+    cancelSubscription,
+    getBusinessSubscription,
   };
 }
+
+
 
 // Combined hook for all users with React Query
 export function useAllUsers() {

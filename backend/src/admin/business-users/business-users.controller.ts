@@ -121,39 +121,28 @@ export class BusinessUsersController {
     );
   }
 
+  @Patch('users/:id/subscription/cancel')
+  @Audit('CANCEL_SUBSCRIPTION')
+  @HttpCode(HttpStatus.OK)
+  cancelSubscription(@Param('id') id: string) {
+    return this.businessUsersService.cancelSubscription(id);
+  }
+
+  @Patch('users/:id/subscription/immediately-cancel')
+  @Audit('IMMEDIATELY_CANCEL_SUBSCRIPTION')
+  @HttpCode(HttpStatus.OK)
+  immediatelyCancelSubscription(@Param('id') id: string) {
+    return this.businessUsersService.immediatelyCancelSubscription(id);
+  }
+
+  @Get('users/:id/subscription')
+  getSubscription(@Param('id') id: string) {
+    return this.businessUsersService.getSubscription(id);
+  }
+
   //   @Get('businesses')
   //   getBusinesses() {
   //     return this.businessService.getBusinesses();
-  //   }
-
-  //   @Get('payments')
-  //   async getAllPayments(
-  //     @Query('limit') limit?: string, // Queries come in as strings
-  //     @Query('starting_after') cursor?: string,
-  //   ) {
-  //     const result = await this.businessService.getAllPayments(
-  //       limit ? parseInt(limit) : 50,
-  //       cursor,
-  //     );
-  //     return result; // Service will now return the full object
-  //   }
-
-  //   @Get('payments/stats')
-  //   getGlobalPaymentStats() {
-  //     return this.businessService.getGlobalPaymentStats();
-  //   }
-
-  //   @Get('payments/failed')
-  //   getAllFailedPayments(
-  //     @Query('limit') limit?: number,
-  //     @Query('starting_after') cursor?: string,
-  //   ) {
-  //     return this.businessService.getAllFailedPayments(limit, cursor);
-  //   }
-
-  //   @Post('payments/:paymentIntentId/refund')
-  //   refundPayment(@Param('paymentIntentId') paymentIntentId: string) {
-  //     return this.businessService.refundPayment(paymentIntentId);
   //   }
 
   //   @Get('disputes')
@@ -164,22 +153,9 @@ export class BusinessUsersController {
   //     return this.businessService.getAllDisputes(limit, cursor);
   //   }
 
-  //   @Get('refunds')
-  //   getAllRefunds(
-  //     @Query('limit') limit?: number,
-  //     @Query('starting_after') cursor?: string,
-  //   ) {
-  //     return this.businessService.getAllRefunds(limit, cursor);
-  //   }
-
   //   @Get(':id')
   //   getBusiness(@Param('id') id: string) {
   //     return this.businessService.getBusiness(id);
-  //   }
-
-  //   @Get(':id/subscription')
-  //   getSubscription(@Param('id') id: string) {
-  //     return this.businessService.getSubscription(id);
   //   }
 
   //   @Get(':id/payments')
@@ -190,11 +166,6 @@ export class BusinessUsersController {
   //   @Get(':id/payments/failed')
   //   getFailedPayments(@Param('id') id: string) {
   //     return this.businessService.getFailedPayments(id);
-  //   }
-
-  //   @Patch(':id/cancel-subscription')
-  //   cancelSubscription(@Param('id') id: string) {
-  //     return this.businessService.cancelSubscription(id);
   //   }
 
   //   @Get(':id/disputes')

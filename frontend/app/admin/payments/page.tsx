@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Users,
   Briefcase,
+  XCircle,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SearchInput } from "@/app/components/admin/SearchInput";
@@ -82,6 +83,9 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth, postWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CreateSubscriptionForm } from "@/app/components/admin/CreateSubscriptionForm";
+import { useUsersManagement } from "@/hooks/useUsers";
+import { CancelSubscriptionCell } from "@/app/components/admin/CancelSubscriptionCell";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,7 +96,13 @@ const formatAmount = (amount: number, currency = "USD") =>
     minimumFractionDigits: 2,
   }).format(amount);
 
-type SortField = "date" | "amount" | "payer" | "status" | "paymentStatus" | "business";
+type SortField =
+  | "date"
+  | "amount"
+  | "payer"
+  | "status"
+  | "paymentStatus"
+  | "business";
 type SortDirection = "asc" | "desc";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
@@ -272,15 +282,15 @@ function ConsumerPaymentsTab({
 
     // Apply status filter
     if (txStatusFilter !== "all") {
-      console.log("result:",result);
-      console.log("txStatusFilter:",txStatusFilter);
+      console.log("result:", result);
+      console.log("txStatusFilter:", txStatusFilter);
       result = result.filter((p) => p.status === txStatusFilter);
-    } 
+    }
 
     // Apply transaction payment status filter
     if (txPaymentStatusFilter !== "all") {
       result = result.filter((p) => p.paymentStatus === txPaymentStatusFilter);
-    }       
+    }
 
     // Apply search filter
     if (search) {
@@ -346,7 +356,14 @@ function ConsumerPaymentsTab({
     });
 
     return result;
-  }, [payments, search, txStatusFilter, txPaymentStatusFilter, sortField, sortDirection]);
+  }, [
+    payments,
+    search,
+    txStatusFilter,
+    txPaymentStatusFilter,
+    sortField,
+    sortDirection,
+  ]);
 
   const totalPages = Math.ceil(filteredAndSorted.length / pageSize);
   const currentPage = Math.min(page, totalPages || 1);
@@ -434,7 +451,7 @@ function ConsumerPaymentsTab({
               <SelectItem value="PAID">Paid</SelectItem>
             </SelectContent>
           </Select>
-          
+
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {filteredAndSorted.length} payments
           </span>
@@ -503,7 +520,7 @@ function ConsumerPaymentsTab({
                   >
                     Status
                   </SortableHeader>
-                   <SortableHeader
+                  <SortableHeader
                     field="paymentStatus"
                     sortField={sortField}
                     sortDirection={sortDirection}
@@ -539,9 +556,7 @@ function ConsumerPaymentsTab({
                 ) : (
                   pageItems.map((p) => (
                     <tr key={p.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3 font-mono text-xs">
-                        {p.id}
-                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{p.id}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{p.consumerName ?? "—"}</p>
                         <p className="text-xs text-muted-foreground">
@@ -857,7 +872,18 @@ function BusinessUserPaymentsTab() {
 
 // ─── Subscriptions Tab ────────────────────────────────────────────────────────
 
-function SubscriptionsTab() {
+interface SubscriptionCancelData {
+  id: string;
+  businessName: string;
+  planName: string;
+}
+
+interface SubscriptionsTabProps {
+  onCancel?: (sub: SubscriptionCancelData) => void;
+  cancellingId?: string | null;
+}
+
+function SubscriptionsTab({ onCancel, cancellingId }: SubscriptionsTabProps) {
   const [filters, setFilters] = useState({
     search: "",
     statusFilter: "all" as SubscriptionStatus | "all",
@@ -994,11 +1020,11 @@ function SubscriptionsTab() {
     refetch();
   };
 
-  // Debug
-  useEffect(() => {
-    console.log("Total subscriptions:", subscriptions.length);
-    console.log("Filtered count:", filteredAndSorted.length);
-  }, [subscriptions, filteredAndSorted]);
+  // // Debug
+  // useEffect(() => {
+  //   console.log("Total subscriptions:", subscriptions.length);
+  //   console.log("Filtered count:", filteredAndSorted.length);
+  // }, [subscriptions, filteredAndSorted]);
 
   if (error) {
     return (
@@ -1190,6 +1216,9 @@ function SubscriptionsTab() {
                   <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
                     Last Event
                   </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1210,6 +1239,8 @@ function SubscriptionsTab() {
                   pageItems.map((sub) => {
                     const owner = (sub.business as any)?.members?.[0]
                       ?.businessUser;
+                    const isActive =
+                      sub.status === "ACTIVE" || sub.status === "TRIAL";
                     return (
                       <tr key={sub.id} className="border-b hover:bg-muted/30">
                         <td className="px-4 py-3 font-medium">
@@ -1255,6 +1286,24 @@ function SubscriptionsTab() {
                             </span>
                           ) : (
                             "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isActive && onCancel && (
+                            <CancelSubscriptionCell
+                              subscription={{
+                                id: sub.id,
+                                businessId: sub.businessId,
+                                business: { name: sub.business?.name || "" },
+                                subscription: {
+                                  title: sub.subscription?.title || "",
+                                },
+                                status: sub.status,
+                                endDate: sub.endDate,
+                                cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+                              }}
+                              invalidateQueries={[["businessSubscriptions"]]}
+                            />
                           )}
                         </td>
                       </tr>
@@ -1742,6 +1791,25 @@ export default function Payments() {
   const { stats: invoiceStats } = useInvoiceStats();
   const { refetch: refetchPayments } = usePayments();
 
+  const [selectedBusinessForSubscription, setSelectedBusinessForSubscription] =
+    useState<{ id: string; name: string } | null>(null);
+  const [showCreateSubscription, setShowCreateSubscription] = useState(false);
+
+  // Cancel subscription state
+  const { cancelSubscription } = useUsersManagement();
+  const [cancellingSubscription, setCancellingSubscription] = useState<{
+    id: string;
+    businessName: string;
+    planName: string;
+  } | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleOpenCreateSubscription = () => {
+    fetchBusinesses();
+    setSelectedBusinessForSubscription(null);
+    setShowCreateSubscription(true);
+  };
+
   const fetchBusinesses = async () => {
     if (!token) return;
     setLoadingBusinesses(true);
@@ -1873,6 +1941,36 @@ export default function Payments() {
     }
   };
 
+  const handleCancelSubscription = async () => {
+    if (!cancellingSubscription || !token) return;
+
+    console.log("Canceling subscription", cancellingSubscription);
+    setIsCancelling(true);
+    const toastId = toast.loading("Canceling subscription...");
+
+    try {
+      await cancelSubscription(cancellingSubscription.id, { immediate: true });
+
+      toast.success("Subscription canceled", {
+        id: toastId,
+        description: `${cancellingSubscription.planName} for ${cancellingSubscription.businessName} has been canceled.`,
+      });
+
+      // Refresh subscriptions
+      await queryClient.invalidateQueries({
+        queryKey: ["businessSubscriptions"],
+      });
+      setCancellingSubscription(null);
+    } catch (error: any) {
+      toast.error("Failed to cancel subscription", {
+        id: toastId,
+        description: error.message,
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const handleSync = async () => {
     if (!token) return;
     const toastId = toast.loading("Syncing with Stripe…");
@@ -1904,6 +2002,10 @@ export default function Payments() {
           <Button variant="outline" onClick={handleOpenCreatePayment}>
             <Plus className="mr-2 h-4 w-4" />
             Create Test Payment
+          </Button>
+          <Button variant="outline" onClick={handleOpenCreateSubscription}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Subscription
           </Button>
           <Button variant="outline" onClick={handleSync}>
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -2138,7 +2240,10 @@ export default function Payments() {
           <BusinessUserPaymentsTab />
         </TabsContent>
         <TabsContent value="subscriptions">
-          <SubscriptionsTab />
+          <SubscriptionsTab
+            onCancel={(sub) => setCancellingSubscription(sub)}
+            cancellingId={cancellingSubscription?.id}
+          />
         </TabsContent>
         <TabsContent value="refunds">
           <RefundsTab />
@@ -2342,6 +2447,86 @@ export default function Payments() {
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Create Subscription Dialog */}
+      <AlertDialog
+        open={showCreateSubscription}
+        onOpenChange={setShowCreateSubscription}
+      >
+        <AlertDialogContent className="sm:max-w-[500px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create Subscription</AlertDialogTitle>
+            <AlertDialogDescription>
+              Create a new subscription for a business.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {!selectedBusinessForSubscription ? (
+            <div className="py-4">
+              <label className="text-sm font-medium mb-2 block">
+                Select Business <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value=""
+                onValueChange={(businessId) => {
+                  const business = businesses.find((b) => b.id === businessId);
+                  if (business) {
+                    setSelectedBusinessForSubscription(business);
+                  }
+                }}
+                disabled={loadingBusinesses}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a business" />
+                </SelectTrigger>
+                <SelectContent>
+                  {loadingBusinesses ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </div>
+                  ) : businesses.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      No businesses found
+                    </div>
+                  ) : (
+                    businesses.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 p-3 bg-muted/30 rounded-lg">
+                <p className="text-sm font-medium">
+                  {selectedBusinessForSubscription.name}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Business ID: {selectedBusinessForSubscription.id}
+                </p>
+              </div>
+              <CreateSubscriptionForm
+                businessId={selectedBusinessForSubscription.id}
+                onSuccess={() => {
+                  setShowCreateSubscription(false);
+                  setSelectedBusinessForSubscription(null);
+                  // Refresh subscriptions if needed
+                  queryClient.invalidateQueries({
+                    queryKey: ["businessSubscriptions"],
+                  });
+                }}
+                onCancel={() => {
+                  setShowCreateSubscription(false);
+                  setSelectedBusinessForSubscription(null);
+                }}
+              />
+            </>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </div>

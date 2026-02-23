@@ -1,7 +1,13 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 // src/hooks/usePayments.ts
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api";
 import type Stripe from "stripe";
@@ -89,6 +95,35 @@ export interface ConsumerPaymentStats {
     _count: number;
     _sum: { amountDue: number | null; amountPaid: number | null };
   }>;
+}
+
+export interface CreateSubscriptionParams {
+  businessId: string;
+  subscriptionId: string;
+  billingCycle: BillingCycle;
+  startDate?: string;
+  trialPeriodDays?: number;
+  stripeCustomerId?: string;
+  stripePaymentMethodId?: string;
+}
+
+export interface CreateSubscriptionResponse {
+  success: boolean;
+  message: string;
+  subscription: {
+    id: string;
+    businessId: string;
+    planId: string;
+    planName: string;
+    status: string;
+    billingCycle: BillingCycle;
+    startDate: string | null;
+    endDate: string | null;
+    stripeSubscriptionId: string | null;
+    amount: number;
+    currency: string;
+  };
+  stripeData?: any;
 }
 
 // ─── BusinessUser Payments ────────────────────────────────────────────────────
@@ -350,6 +385,24 @@ export interface BusinessAddOn {
   };
 }
 
+export interface CreateSubscriptionParams {
+  businessId: string;
+  subscriptionId: string;
+  billingCycle: BillingCycle;
+  startDate?: string;
+  trialPeriodDays?: number;
+  stripeCustomerId?: string;
+  stripePaymentMethodId?: string;
+}
+
+export interface CreateCheckoutSessionParams {
+  businessId: string;
+  subscriptionId: string;
+  billingCycle: BillingCycle;
+  successUrl: string;
+  cancelUrl: string;
+}
+
 // ─── Hooks: Consumer Payments ─────────────────────────────────────────────────
 
 export function useConsumerPayments() {
@@ -359,9 +412,9 @@ export function useConsumerPayments() {
     queryKey: ["consumerPayments", "all"],
     queryFn: async () => {
       if (!token) throw new Error("Not authenticated");
-      
+
       // console.log("Fetching all consumer payments");
-      
+
       // Fetch first page
       const firstPage = await fetchWithAuth<PaginatedResponse<ConsumerPayment>>(
         `/admin/payments/consumer-payments?limit=100`,
@@ -373,7 +426,9 @@ export function useConsumerPayments() {
 
       // Fetch remaining pages
       while (nextCursor) {
-        const nextPage = await fetchWithAuth<PaginatedResponse<ConsumerPayment>>(
+        const nextPage = await fetchWithAuth<
+          PaginatedResponse<ConsumerPayment>
+        >(
           `/admin/payments/consumer-payments?limit=100&cursor=${nextCursor}`,
           token,
         );
@@ -992,4 +1047,92 @@ export function useBusinessAddOns(businessId: string) {
     error: query.error instanceof Error ? query.error.message : null,
     refetch: query.refetch,
   };
+}
+
+export function useCreateSubscription() {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: CreateSubscriptionParams) => {
+      if (!token) throw new Error("No authentication token");
+
+      const response = await fetchWithAuth<CreateSubscriptionResponse>(
+        "/admin/payments/subscriptions/create",
+        token,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(params),
+        },
+      );
+
+      return response;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({
+        queryKey: ["businessSubscriptions", "all"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["businessUserPayments"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["business", variables.businessId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["subscriptionPlans"],
+      });
+
+      // Show success message (optional - can be handled in component)
+      console.log("Subscription created successfully:", data.message);
+    },
+    onError: (error) => {
+      console.error("Failed to create subscription:", error);
+    },
+  });
+}
+
+// Add this for checkout session creation
+export interface CreateCheckoutSessionParams {
+  businessId: string;
+  subscriptionId: string;
+  billingCycle: BillingCycle;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface CreateCheckoutSessionResponse {
+  success: boolean;
+  sessionId: string;
+  url: string;
+}
+
+export function useCreateCheckoutSession() {
+  const { token } = useAuth();
+
+  return useMutation({
+    mutationFn: async (params: CreateCheckoutSessionParams) => {
+      if (!token) throw new Error("No authentication token");
+
+      const response = await fetchWithAuth<CreateCheckoutSessionResponse>(
+        "/admin/payments/subscriptions/checkout-session",
+        token,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(params),
+        },
+      );
+
+      return response;
+    },
+    onError: (error) => {
+      console.error("Failed to create checkout session:", error);
+    },
+  });
 }

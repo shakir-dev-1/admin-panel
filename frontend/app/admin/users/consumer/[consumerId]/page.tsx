@@ -429,7 +429,7 @@ export default function UserDetail() {
                     Associated Businesses
                   </h2>
                 </div>
-                <div className="mt-4 grid gap-3">
+                {/* <div className="mt-4 grid gap-3">
                   {user.businessClients.map((client, index) => (                    
                     <div
                       key={client.business.id}
@@ -452,7 +452,7 @@ export default function UserDetail() {
                       </Button>
                     </div>
                   ))}
-                </div>
+                </div> */}
               </div>
             )}
 

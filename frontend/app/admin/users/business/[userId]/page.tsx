@@ -24,6 +24,7 @@ import {
   Globe,
   BadgeCheck,
   AlertCircle,
+  XCircle,
 } from "lucide-react";
 import { StatusBadge } from "@/app/components/admin/StatusBadge";
 import { UserTypeBadge } from "@/app/components/admin/UserTypeBadge";
@@ -40,6 +41,16 @@ import {
   DialogTitle,
 } from "@/app/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -50,7 +61,7 @@ import { useAuth } from "@/hooks/useAuth";
 // import { fetchWithAuth } from "@/lib/api";
 import { safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useBusinessUserById } from "@/hooks/useUsers";
-
+import { CancelSubscriptionButton } from "@/app/components/admin/CancelSubscriptionButton";
 
 export default function BusinessUserDetail() {
   const params = useParams();
@@ -64,10 +75,17 @@ export default function BusinessUserDetail() {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [showCancelSubscriptionDialog, setShowCancelSubscriptionDialog] =
+    useState(false);
+  const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
+  const [selectedSubscription, setSelectedSubscription] = useState<any>(null);
+  const [isImmediateCancel, setIsImmediateCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
 
-  const { resetPassword, changeEmail, changePhone } = useUsersManagement();
+  const { resetPassword, changeEmail, changePhone, cancelSubscription } =
+    useUsersManagement();
 
   if (isLoading) {
     return (
@@ -109,7 +127,7 @@ export default function BusinessUserDetail() {
     try {
       await changeEmail(user.id, newEmail, true);
       toast.success("Email changed from " + user.email + " to " + newEmail);
-      // refetch();
+      refetch();
       setShowEmailDialog(false);
       setNewEmail("");
     } catch (error) {
@@ -126,13 +144,43 @@ export default function BusinessUserDetail() {
       toast.success(
         "Phone changed from " + user.phoneNumber + " to " + newPhone,
       );
-      // refetch();
+      refetch();
       setShowPhoneDialog(false);
       setNewPhone("");
     } catch (error) {
       toast.error("Failed to change phone");
       console.error("Phone change error:", error);
     }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!token || !selectedBusiness || !selectedSubscription) return;
+
+    try {
+      setIsCancelling(true);
+
+      const result = await cancelSubscription(selectedBusiness.id, {
+        immediate: isImmediateCancel,
+      });
+
+      toast.success(result.message);
+      refetch(); // Refresh user data
+      setShowCancelSubscriptionDialog(false);
+      setSelectedBusiness(null);
+      setSelectedSubscription(null);
+      setIsImmediateCancel(false);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to cancel subscription");
+      console.error("Subscription cancellation error:", error);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const openCancelDialog = (business: any, subscription: any) => {
+    setSelectedBusiness(business);
+    setSelectedSubscription(subscription);
+    setShowCancelSubscriptionDialog(true);
   };
 
   const getStatus = () => {
@@ -433,6 +481,187 @@ export default function BusinessUserDetail() {
                 </div>
               </div>
             </div>
+
+            {/* Subscriptions Section */}
+            <div className="admin-card">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="text-lg font-semibold">Subscriptions</h2>
+                </div>
+                <Badge variant="outline">
+                  {user.businesses?.reduce(
+                    (acc, biz) => acc + (biz.subscriptions?.length || 0),
+                    0,
+                  )}{" "}
+                  total
+                </Badge>
+              </div>
+
+              <div className="space-y-4">
+                {user.businesses?.filter(
+                  (biz) => biz.subscriptions && biz.subscriptions.length > 0,
+                ).length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground">
+                    No active subscriptions found for this user
+                  </div>
+                ) : (
+                  user.businesses?.map(
+                    (business) =>
+                      business.subscriptions &&
+                      business.subscriptions.length > 0 && (
+                        <div
+                          key={business.id}
+                          className="rounded-lg border p-4"
+                        >
+                          <div className="flex items-center gap-2 mb-3">
+                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="font-medium">{business.name}</h3>
+                            {business.isVerified && (
+                              <BadgeCheck className="h-4 w-4 text-blue-500" />
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
+                            {business.subscriptions.map((sub) => (
+                              <div
+                                key={sub.id}
+                                className="rounded-lg bg-muted/30 p-3"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">
+                                      {sub.plan.title}
+                                    </span>
+                                    <Badge
+                                      variant={
+                                        sub.status === "ACTIVE"
+                                          ? "default"
+                                          : sub.status === "TRIAL"
+                                            ? "secondary"
+                                            : "outline"
+                                      }
+                                      className={
+                                        sub.status === "CANCELLED"
+                                          ? "bg-red-50 text-red-700"
+                                          : ""
+                                      }
+                                    >
+                                      {sub.status}
+                                    </Badge>
+                                    {sub.isTrialUsed && (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-purple-50 text-purple-700"
+                                      >
+                                        Trial
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-green-50 text-green-700"
+                                    >
+                                      {sub.paymentStatus}
+                                    </Badge>
+                                    {sub.status === "ACTIVE" && (
+                                      <CancelSubscriptionButton
+                                        subscriptionId={sub.id}
+                                        businessId={business.id}
+                                        businessName={business.name}
+                                        planName={sub.plan.title}
+                                        status={sub.status}
+                                        endDate={sub.endDate?.toString()}
+                                        cancelAtPeriodEnd={sub.cancelAtPeriodEnd}
+                                        size="sm"
+                                        variant="destructive"
+                                        onSuccess={refetch}
+                                        invalidateQueries={[
+                                          ["businessSubscriptions"],
+                                          ["businessUser", userId],
+                                        ]}
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Billing Cycle
+                                    </p>
+                                    <p className="font-medium capitalize">
+                                      {sub.billingCycle.toLowerCase()}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Start Date
+                                    </p>
+                                    {sub.startDate ? (
+                                      <p className="font-medium">
+                                        {safeFormatDate(
+                                          sub.startDate.toString(),
+                                          "MMM d, yyyy",
+                                        )}
+                                      </p>
+                                    ) : (
+                                      <p className="font-medium">N/A</p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      End Date
+                                    </p>
+                                    {sub.endDate ? (
+                                      <p className="font-medium">
+                                        {safeFormatDate(
+                                          sub.endDate.toString(),
+                                          "MMM d, yyyy",
+                                        )}
+                                      </p>
+                                    ) : (
+                                      <p className="font-medium">N/A</p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Cancel at Period End
+                                    </p>
+                                    <Badge variant="outline" className="mt-1">
+                                      {sub.cancelAtPeriodEnd ? "Yes" : "No"}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                {sub.canceledDate && (
+                                  <div className="mt-2 flex items-center gap-2 text-sm text-red-600">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <span>
+                                      Cancelled on{" "}
+                                      {safeFormatDate(
+                                        sub.canceledDate.toString(),
+                                        "MMM d, yyyy",
+                                      )}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {sub.orderId && (
+                                  <div className="mt-2 text-xs text-muted-foreground">
+                                    Order ID: {sub.orderId}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ),
+                  )
+                )}
+              </div>
+            </div>
           </TabsContent>
 
           {/* Businesses Tab - FIXED */}
@@ -511,7 +740,7 @@ export default function BusinessUserDetail() {
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-2 ml-4">
+                          {/* <div className="flex flex-col gap-2 ml-4">
                             {business.id && (
                               <Button
                                 variant="outline"
@@ -525,7 +754,7 @@ export default function BusinessUserDetail() {
                                 View Business
                               </Button>
                             )}
-                          </div>
+                          </div> */}
                         </div>
                       </div>
                     );

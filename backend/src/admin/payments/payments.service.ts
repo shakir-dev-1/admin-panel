@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -10,6 +11,7 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -22,6 +24,8 @@ import {
   BillingCycle,
 } from '../../generated/prisma/client.js';
 
+import { CreateSubscriptionDto } from '../dto/create-subscription.dto.js';
+
 // Define interfaces for the price structure
 export interface SubscriptionPrice {
   amount: number;
@@ -29,6 +33,26 @@ export interface SubscriptionPrice {
   interval: 'month' | 'year' | 'MONTH' | 'YEAR';
   price?: number; // Some might use 'price' instead of 'amount'
   [key: string]: any; // Allow additional fields
+}
+
+// Add this interface before the PaymentsService class
+export interface CreateSubscriptionResponse {
+  success: boolean;
+  message: string;
+  subscription: {
+    id: string;
+    businessId: string;
+    planId: string;
+    planName: string;
+    status: string;
+    billingCycle: BillingCycle;
+    startDate: Date | null;
+    endDate: Date | null;
+    stripeSubscriptionId: string | null;
+    amount: number;
+    currency: string;
+  };
+  stripeData: Stripe.Response<Stripe.Subscription> | null;
 }
 
 @Injectable()
@@ -1757,5 +1781,403 @@ export class PaymentsService {
         status: paymentIntent.status,
       };
     });
+  }
+
+  /**
+   * Create a new subscription for a business
+   */
+  async createSubscription(
+    createDto: CreateSubscriptionDto,
+  ): Promise<CreateSubscriptionResponse> {
+    this.logger.log(
+      `Creating subscription for business: ${createDto.businessId}`,
+    );
+
+    const {
+      businessId,
+      subscriptionId,
+      billingCycle,
+      startDate,
+      trialPeriodDays,
+      stripeCustomerId,
+      // stripePaymentMethodId,
+    } = createDto;
+
+    // 1. Verify business exists (outside transaction)
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException(`Business with ID ${businessId} not found`);
+    }
+
+    // 2. Verify subscription plan exists (outside transaction)
+    const subscriptionPlan = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscriptionPlan) {
+      throw new NotFoundException(
+        `Subscription plan with ID ${subscriptionId} not found`,
+      );
+    }
+
+    // 3. Check if business already has an active subscription (outside transaction)
+    const existingActiveSub = await this.prisma.businessSubscription.findFirst({
+      where: {
+        businessId,
+        status: {
+          in: ['ACTIVE', 'TRIAL'],
+        },
+      },
+    });
+
+    if (existingActiveSub) {
+      throw new BadRequestException(
+        `Business already has an active subscription. Please cancel it first.`,
+      );
+    }
+
+    // 4. Parse prices to find the correct price for the billing cycle
+    const prices = this.parsePrices(subscriptionPlan.prices);
+    const selectedPrice = this.findPriceByBillingCycle(prices, billingCycle);
+
+    if (!selectedPrice) {
+      throw new BadRequestException(
+        `No price found for billing cycle: ${billingCycle}`,
+      );
+    }
+
+    const amount = (selectedPrice.amount || selectedPrice.price || 0) / 100;
+    const currency = selectedPrice.currency || 'USD';
+
+    // 5. Calculate dates
+    const now = new Date();
+    const subStartDate = startDate ? new Date(startDate) : now;
+    let subEndDate: Date | null = null;
+
+    if (billingCycle === BillingCycle.MONTH) {
+      subEndDate = new Date(subStartDate);
+      subEndDate.setMonth(subEndDate.getMonth() + 1);
+    } else if (billingCycle === BillingCycle.YEAR) {
+      subEndDate = new Date(subStartDate);
+      subEndDate.setFullYear(subEndDate.getFullYear() + 1);
+    }
+
+    // Apply trial if specified
+    let trialEndDate: Date | null = null;
+    let status = 'ACTIVE';
+
+    if (trialPeriodDays && trialPeriodDays > 0) {
+      trialEndDate = new Date(subStartDate);
+      trialEndDate.setDate(trialEndDate.getDate() + trialPeriodDays);
+      status = 'TRIAL';
+    }
+
+    // 6. Create Stripe subscription (outside transaction - this is the slow part)
+    let stripeSubscription: Stripe.Response<Stripe.Subscription> | null = null;
+    let stripeSubscriptionId: string | null = null;
+    let customerTransactionId: string | null = null;
+
+    // Only attempt Stripe if a customer ID is provided
+    if (stripeCustomerId) {
+      try {
+        // Verify the customer exists first
+        try {
+          await this.stripe.customers.retrieve(stripeCustomerId);
+        } catch (error) {
+          this.logger.error(`Invalid Stripe customer ID: ${stripeCustomerId}`);
+          throw new BadRequestException(
+            `Invalid Stripe customer ID: ${stripeCustomerId}. Please provide a valid test customer ID.`,
+          );
+        }
+
+        // First, create or get a product
+        let productId: string;
+
+        // Check if product already exists
+        const products = await this.stripe.products.search({
+          query: `name:'${subscriptionPlan.title}' AND metadata['subscriptionId']:'${subscriptionId}'`,
+        });
+
+        if (products.data.length > 0) {
+          productId = products.data[0].id;
+        } else {
+          // Create a new product
+          const product = await this.stripe.products.create({
+            name: subscriptionPlan.title,
+            metadata: {
+              subscriptionId,
+              businessId,
+            },
+          });
+          productId = product.id;
+        }
+
+        // Create a price for the product
+        const price = await this.stripe.prices.create({
+          product: productId,
+          unit_amount: Math.round(amount * 100),
+          currency: currency.toLowerCase(),
+          recurring: {
+            interval: billingCycle.toLowerCase() as 'month' | 'year',
+          },
+          metadata: {
+            subscriptionId,
+            billingCycle,
+          },
+        });
+
+        const subscriptionData: Stripe.SubscriptionCreateParams = {
+          customer: stripeCustomerId,
+          items: [
+            {
+              price: price.id,
+            },
+          ],
+          metadata: {
+            businessId,
+            subscriptionPlanId: subscriptionId,
+            planName: subscriptionPlan.title,
+          },
+        };
+
+        // Add trial if applicable
+        if (trialPeriodDays && trialPeriodDays > 0) {
+          subscriptionData.trial_period_days = trialPeriodDays;
+        }
+
+        stripeSubscription =
+          await this.stripe.subscriptions.create(subscriptionData);
+        stripeSubscriptionId = stripeSubscription.id;
+        customerTransactionId = stripeCustomerId;
+
+        this.logger.log(`Stripe subscription created: ${stripeSubscriptionId}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to create Stripe subscription: ${error.message}`,
+        );
+        throw new BadRequestException(
+          `Stripe subscription creation failed: ${error.message}`,
+        );
+      }
+    } else {
+      this.logger.log(
+        'No Stripe customer ID provided - creating local subscription only',
+      );
+    }
+
+    // 7. Create database records in a transaction with increased timeout
+    const businessSubscription = await this.prisma.$transaction(
+      async (prisma) => {
+        // Create the subscription in our database
+        const subscription = await prisma.businessSubscription.create({
+          data: {
+            businessId,
+            subscriptionId,
+            customerTransactionId:
+              customerTransactionId ||
+              `local_${Math.random().toString(36).substring(7)}`,
+            orderId: stripeSubscriptionId,
+            startDate: subStartDate,
+            endDate: subEndDate,
+            billingCycle,
+            status: status as SubscriptionStatus,
+            paymentStatus: trialPeriodDays ? 'UNPAID' : 'PAID',
+            isTrialUsed: status === 'TRIAL',
+            cancelAtPeriodEnd: false,
+            paymentCheck: trialEndDate?.toISOString() || null,
+          },
+          include: {
+            subscription: true,
+          },
+        });
+
+        // Create history record
+        await prisma.businessSubscriptionHistory.create({
+          data: {
+            businessSubscriptionId: subscription.id,
+            eventType: 'CREATED',
+            subscriptionId: stripeSubscriptionId || subscription.id,
+            oldPlanId: null,
+            newPlanId: subscriptionId,
+            amount: Math.round(amount * 100),
+            currency,
+            startDate: subStartDate,
+            endDate: subEndDate,
+          },
+        });
+
+        return subscription;
+      },
+      {
+        timeout: 15000, // Increase timeout to 15 seconds
+        maxWait: 10000, // Max time to wait for a connection
+      },
+    );
+
+    this.logger.log(
+      `Subscription created successfully: ${businessSubscription.id}`,
+    );
+
+    // 8. Return formatted response
+    return {
+      success: true,
+      message: `Subscription created successfully${trialPeriodDays ? ` with ${trialPeriodDays} day trial` : ''}`,
+      subscription: {
+        id: businessSubscription.id,
+        businessId: businessSubscription.businessId,
+        planId: subscriptionPlan.id,
+        planName: subscriptionPlan.title,
+        status: businessSubscription.status,
+        billingCycle: businessSubscription.billingCycle,
+        startDate: businessSubscription.startDate,
+        endDate: businessSubscription.endDate,
+        stripeSubscriptionId: businessSubscription.orderId,
+        amount,
+        currency,
+      },
+      stripeData: stripeSubscription,
+    };
+  }
+
+  /**
+   * Create a subscription with Stripe checkout session (alternative flow)
+   */
+  async createCheckoutSession(
+    businessId: string,
+    subscriptionId: string,
+    billingCycle: BillingCycle,
+    successUrl: string,
+    cancelUrl: string,
+  ) {
+    this.logger.log(`Creating checkout session for business: ${businessId}`);
+
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const subscriptionPlan = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscriptionPlan) {
+      throw new NotFoundException('Subscription plan not found');
+    }
+
+    const prices = this.parsePrices(subscriptionPlan.prices);
+    const selectedPrice = this.findPriceByBillingCycle(prices, billingCycle);
+
+    if (!selectedPrice) {
+      throw new BadRequestException(
+        `No price found for billing cycle: ${billingCycle}`,
+      );
+    }
+
+    const amount = selectedPrice.amount || selectedPrice.price || 0;
+    const currency = (selectedPrice.currency || 'USD').toLowerCase();
+
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency,
+              product_data: {
+                name: subscriptionPlan.title,
+                description: `Subscription plan - ${billingCycle.toLowerCase()}ly billing`,
+                metadata: {
+                  subscriptionId: subscriptionPlan.id,
+                },
+              },
+              unit_amount: Math.round(amount),
+              recurring: {
+                interval: billingCycle.toLowerCase() as 'month' | 'year',
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          businessId,
+          subscriptionId: subscriptionPlan.id,
+          billingCycle,
+        },
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to create checkout session: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to create checkout session: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Handle successful subscription from webhook
+   */
+  async handleSuccessfulSubscription(subscriptionData: any) {
+    // This would be called from your Stripe webhook handler
+    const {
+      metadata,
+      id,
+      customer,
+      current_period_start,
+      current_period_end,
+      trial_end,
+    } = subscriptionData;
+
+    const { businessId, subscriptionId, billingCycle } = metadata;
+
+    if (!businessId || !subscriptionId || !billingCycle) {
+      this.logger.error('Missing metadata in subscription data');
+      return;
+    }
+
+    // Check if subscription already exists
+    const existing = await this.prisma.businessSubscription.findFirst({
+      where: { orderId: id },
+    });
+
+    if (existing) {
+      this.logger.log(`Subscription ${id} already exists in database`);
+      return;
+    }
+
+    const startDate = new Date(current_period_start * 1000);
+    const endDate = new Date(current_period_end * 1000);
+    const isTrial = !!trial_end && new Date(trial_end * 1000) > new Date();
+
+    await this.prisma.businessSubscription.create({
+      data: {
+        businessId,
+        subscriptionId,
+        customerTransactionId: customer,
+        orderId: id,
+        startDate,
+        endDate,
+        billingCycle: billingCycle as BillingCycle,
+        status: isTrial ? 'TRIAL' : 'ACTIVE',
+        paymentStatus: 'PAID',
+        isTrialUsed: isTrial,
+        cancelAtPeriodEnd: false,
+      },
+    });
+
+    this.logger.log(`Subscription ${id} created from webhook`);
   }
 }

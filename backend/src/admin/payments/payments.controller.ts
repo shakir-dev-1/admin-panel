@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 // src/admin/payments/payments.controller.ts
 import {
@@ -14,6 +15,7 @@ import {
   BadRequestException,
   ParseIntPipe,
   DefaultValuePipe,
+  // Headers,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service.js';
 // import { AdminGuard } from '../../auth/guards/admin.guard.js';
@@ -23,6 +25,7 @@ import {
   BillingCycle,
   PaymentStatus,
 } from '../../generated/prisma/client.js';
+import { CreateSubscriptionDto } from '../dto/create-subscription.dto.js';
 
 // @UseGuards(AdminGuard)
 @Controller('admin/payments')
@@ -317,5 +320,76 @@ export class PaymentsController {
       body.invoiceId,
       body.clientId,
     );
+  }
+
+  @Post('subscriptions/create')
+  @Audit('CREATE_SUBSCRIPTION')
+  @HttpCode(HttpStatus.CREATED)
+  async createSubscription(@Body() createDto: CreateSubscriptionDto) {
+    return this.paymentsService.createSubscription(createDto);
+  }
+
+  @Post('subscriptions/checkout-session')
+  @Audit('CREATE_CHECKOUT_SESSION')
+  @HttpCode(HttpStatus.OK)
+  async createCheckoutSession(
+    @Body()
+    body: {
+      businessId: string;
+      subscriptionId: string;
+      billingCycle: BillingCycle;
+      successUrl: string;
+      cancelUrl: string;
+    },
+  ) {
+    const { businessId, subscriptionId, billingCycle, successUrl, cancelUrl } =
+      body;
+
+    if (
+      !businessId ||
+      !subscriptionId ||
+      !billingCycle ||
+      !successUrl ||
+      !cancelUrl
+    ) {
+      throw new BadRequestException('Missing required fields');
+    }
+
+    return this.paymentsService.createCheckoutSession(
+      businessId,
+      subscriptionId,
+      billingCycle,
+      successUrl,
+      cancelUrl,
+    );
+  }
+
+  @Post('subscriptions/webhook')
+  @HttpCode(HttpStatus.OK)
+  async handleStripeWebhook(
+    @Body() body: any,
+    // @Headers('stripe-signature') signature: string,
+  ) {
+    // You'd verify the webhook signature here
+    const event = body;
+
+    switch (event.type) {
+      case 'checkout.session.completed':
+        // Handle checkout completion
+        break;
+      case 'customer.subscription.created':
+        await this.paymentsService.handleSuccessfulSubscription(
+          event.data.object,
+        );
+        break;
+      case 'customer.subscription.updated':
+        // Handle subscription updates
+        break;
+      case 'customer.subscription.deleted':
+        // Handle subscription cancellations
+        break;
+    }
+
+    return { received: true };
   }
 }

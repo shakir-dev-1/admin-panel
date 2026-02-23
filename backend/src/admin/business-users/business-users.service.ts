@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
-  // Inject,
+  Inject,
   Injectable,
   NotFoundException,
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-// import Stripe from 'stripe';
+import Stripe from 'stripe';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   Prisma,
@@ -17,6 +17,9 @@ import {
   InvitationStatus,
   RewardType,
   RewardStatus,
+  SubscriptionStatus,
+  BillingCycle,
+  PaymentStatus,
 } from '../../generated/prisma/client.js';
 // import { jest } from '@jest/globals'; // Add this if you use jest.fn() inside the service itself
 import * as crypto from 'crypto';
@@ -125,6 +128,26 @@ export interface BusinessUserDetailResult {
     role: Roles;
     joinedAt: Date;
     memberId: string;
+    subscriptions: Array<{
+      id: string;
+      status: SubscriptionStatus;
+      billingCycle: BillingCycle;
+      startDate: Date | null;
+      endDate: Date | null;
+      paymentStatus: PaymentStatus | null;
+      isTrialUsed: boolean | null;
+      cancelAtPeriodEnd: boolean | null;
+      canceledDate: Date | null;
+      orderId: string | null;
+      plan: {
+        id: string;
+        title: string;
+        prices: Prisma.JsonValue;
+        features: Prisma.JsonValue;
+        trialPeriodDays: number | null;
+        country: string;
+      };
+    }>;
   }>;
   invitations: Array<{
     id: string;
@@ -194,7 +217,7 @@ export class BusinessUsersService {
 
   constructor(
     private readonly prisma: PrismaService,
-    // @Inject('STRIPE_CLIENT') private readonly stripe: Stripe,
+    @Inject('STRIPE_CLIENT') private readonly stripe: Stripe,
   ) {}
 
   /**
@@ -643,6 +666,33 @@ export class BusinessUsersService {
                   city: true,
                   country: true,
                   isVerified: true,
+                  subscription: {
+                    select: {
+                      id: true,
+                      status: true,
+                      billingCycle: true,
+                      startDate: true,
+                      endDate: true,
+                      paymentStatus: true,
+                      isTrialUsed: true,
+                      cancelAtPeriodEnd: true,
+                      canceledDate: true,
+                      orderId: true,
+                      subscription: {
+                        select: {
+                          id: true,
+                          title: true,
+                          prices: true,
+                          features: true,
+                          trialPeriodDays: true,
+                          country: true,
+                        },
+                      },
+                    },
+                    orderBy: {
+                      createdAt: 'desc',
+                    },
+                  },
                 },
               },
             },
@@ -727,6 +777,26 @@ export class BusinessUsersService {
           role: membership.role.name, // Role from the membership
           joinedAt: membership.createdAt, // When they joined (from BusinessMember)
           memberId: membership.id, // BusinessMember ID
+          subscriptions: membership.business.subscription.map((sub) => ({
+            id: sub.id,
+            status: sub.status,
+            billingCycle: sub.billingCycle,
+            startDate: sub.startDate,
+            endDate: sub.endDate,
+            paymentStatus: sub.paymentStatus,
+            isTrialUsed: sub.isTrialUsed,
+            cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+            canceledDate: sub.canceledDate,
+            orderId: sub.orderId,
+            plan: {
+              id: sub.subscription.id,
+              title: sub.subscription.title,
+              prices: sub.subscription.prices,
+              features: sub.subscription.features,
+              trialPeriodDays: sub.subscription.trialPeriodDays,
+              country: sub.subscription.country,
+            },
+          })),
         })),
         rewards: businessUser.rewardReceived,
         avatar: businessUser.avatar
@@ -1078,11 +1148,6 @@ export class BusinessUsersService {
 
     const rawToken = crypto.randomBytes(32).toString('hex');
 
-    // await this.logAudit(adminId, 'RESET_PASSWORD', businessUserId, {
-    //   action: 'business_user_password_reset_forced',
-    //   userType: 'BUSINESS',
-    // });
-
     return { success: true, token: rawToken }; // In production, send via email
   }
 
@@ -1100,11 +1165,6 @@ export class BusinessUsersService {
       where: { id: businessUserId },
       data: { email, isEmailConfirmed: false },
     });
-
-    // await this.logAudit(adminId, 'CHANGE_EMAIL', businessUserId, {
-    //   email,
-    //   userType: 'BUSINESS',
-    // });
 
     return { success: true };
   }
@@ -1124,11 +1184,6 @@ export class BusinessUsersService {
       data: { phoneNumber: phone },
     });
 
-    // await this.logAudit(adminId, 'CHANGE_PHONE', businessUserId, {
-    //   phone,
-    //   userType: 'BUSINESS',
-    // });
-
     return { success: true };
   }
 
@@ -1142,12 +1197,267 @@ export class BusinessUsersService {
       data: { isEmailConfirmed },
     });
 
-    // await this.logAudit(adminId, 'CHANGE_EMAIL_CONFIRMATION', businessUserId, {
-    //   isEmailConfirmed,
-    //   userType: 'BUSINESS',
-    // });
-
     return { success: true };
+  }
+
+  /**
+   * Get subscription details for a business
+   */
+  async getSubscription(businessId: string) {
+    const businessSub = await this.prisma.businessSubscription.findFirst({
+      where: {
+        businessId,
+        status: {
+          in: ['ACTIVE', 'TRIAL'],
+        },
+      },
+      include: {
+        subscription: true,
+        history: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        },
+      },
+    });
+
+    if (!businessSub) {
+      throw new NotFoundException(
+        'No active subscription found for this business',
+      );
+    }
+
+    // If there's a Stripe subscription ID, get additional data from Stripe
+    let stripeSubscription: Stripe.Response<Stripe.Subscription> | null = null;
+    if (businessSub.orderId) {
+      try {
+        stripeSubscription = await this.stripe.subscriptions.retrieve(
+          businessSub.orderId,
+          {
+            expand: ['plan.product', 'latest_invoice'],
+          },
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to retrieve Stripe subscription: ${error.message}`,
+        );
+        // Don't throw - we still have local data
+      }
+    }
+
+    return {
+      id: businessSub.id,
+      plan: {
+        id: businessSub.subscription.id,
+        title: businessSub.subscription.title,
+        features: businessSub.subscription.features,
+        prices: businessSub.subscription.prices,
+        trialPeriodDays: businessSub.subscription.trialPeriodDays,
+      },
+      status: businessSub.status,
+      billingCycle: businessSub.billingCycle,
+      startDate: businessSub.startDate,
+      endDate: businessSub.endDate,
+      paymentStatus: businessSub.paymentStatus,
+      isTrialUsed: businessSub.isTrialUsed,
+      cancelAtPeriodEnd: businessSub.cancelAtPeriodEnd,
+      canceledDate: businessSub.canceledDate,
+      orderId: businessSub.orderId,
+      customerTransactionId: businessSub.customerTransactionId,
+      history: businessSub.history,
+      stripeSubscription,
+    };
+  }
+
+  /**
+   * Cancel a business subscription
+   */
+  async cancelSubscription(businessId: string) {
+    this.logger.log(`Canceling subscription for business ID: ${businessId}`);
+
+    // Find the active subscription
+    const businessSub = await this.prisma.businessSubscription.findFirst({
+      where: {
+        businessId,
+        status: {
+          in: ['ACTIVE', 'TRIAL'],
+        },
+      },
+      include: {
+        subscription: true,
+      },
+    });
+
+    if (!businessSub) {
+      throw new NotFoundException(
+        'No active subscription found for this business',
+      );
+    }
+
+    let stripeResult: Stripe.Response<Stripe.Subscription> | null = null;
+
+    // If there's a Stripe subscription ID, update it first
+    if (businessSub.orderId) {
+      try {
+        stripeResult = await this.stripe.subscriptions.update(
+          businessSub.orderId,
+          {
+            cancel_at_period_end: true,
+          },
+        );
+
+        this.logger.log(
+          `Stripe subscription ${businessSub.orderId} set to cancel at period end`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to cancel Stripe subscription: ${error.message}`,
+        );
+        // Throw the error to prevent database update
+        throw new BadRequestException(
+          `Failed to cancel subscription in Stripe: ${error.message}`,
+        );
+      }
+    }
+
+    // Only update database if Stripe update succeeded (or if there was no Stripe subscription)
+    try {
+      // Use a transaction to ensure all database operations succeed together
+      const updatedSubscription = await this.prisma.$transaction(async (tx) => {
+        // Update the subscription
+        const updated = await tx.businessSubscription.update({
+          where: { id: businessSub.id },
+          data: {
+            cancelAtPeriodEnd: true,
+            // Don't change status yet - will happen at period end
+          },
+          include: {
+            subscription: true,
+          },
+        });
+
+        // Create history record
+        await tx.businessSubscriptionHistory.create({
+          data: {
+            businessSubscriptionId: businessSub.id,
+            eventType: 'CANCELLED',
+            subscriptionId: businessSub.orderId || businessSub.id,
+            oldPlanId: businessSub.subscriptionId,
+            startDate: businessSub.startDate,
+            endDate: businessSub.endDate,
+          },
+        });
+
+        return updated;
+      });
+
+      return {
+        success: true,
+        message:
+          'Subscription will be canceled at the end of the billing period',
+        subscription: {
+          id: updatedSubscription.id,
+          status: updatedSubscription.status,
+          cancelAtPeriodEnd: updatedSubscription.cancelAtPeriodEnd,
+          endDate: updatedSubscription.endDate,
+          plan: updatedSubscription.subscription.title,
+        },
+        stripeResult,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update database after Stripe cancellation: ${error.message}`,
+      );
+      throw new BadRequestException(
+        'Failed to update subscription status in database',
+      );
+    }
+  }
+
+  /**
+   * Immediately cancel a subscription (not recommended - use cancelSubscription instead)
+   */
+  async immediatelyCancelSubscription(businessId: string) {
+    this.logger.log(
+      `Immediately canceling subscription for business ID: ${businessId}`,
+    );
+
+    const businessSub = await this.prisma.businessSubscription.findFirst({
+      where: {
+        businessId,
+        status: {
+          in: ['ACTIVE', 'TRIAL'],
+        },
+      },
+    });
+
+    if (!businessSub) {
+      throw new NotFoundException(
+        'No active subscription found for this business',
+      );
+    }
+
+    let stripeResult: Stripe.Response<Stripe.Subscription> | null = null;
+
+    // First cancel in Stripe
+    if (businessSub.orderId) {
+      try {
+        stripeResult = await this.stripe.subscriptions.cancel(
+          businessSub.orderId,
+        );
+        this.logger.log(`Stripe subscription ${businessSub.orderId} cancelled`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to cancel Stripe subscription: ${error.message}`,
+        );
+        throw new BadRequestException(
+          `Failed to cancel subscription in Stripe: ${error.message}`,
+        );
+      }
+    }
+
+    // Only update database if Stripe cancellation succeeded
+    try {
+      const updatedSubscription = await this.prisma.$transaction(async (tx) => {
+        // Update database to cancelled
+        const updated = await tx.businessSubscription.update({
+          where: { id: businessSub.id },
+          data: {
+            status: 'CANCELLED',
+            canceledDate: new Date(),
+            cancelAtPeriodEnd: false,
+            endDate: new Date(), // Set end date to now
+          },
+        });
+
+        // Create history record
+        await tx.businessSubscriptionHistory.create({
+          data: {
+            businessSubscriptionId: businessSub.id,
+            eventType: 'CANCELLED',
+            subscriptionId: businessSub.orderId || businessSub.id,
+            oldPlanId: businessSub.subscriptionId,
+            startDate: businessSub.startDate,
+            endDate: businessSub.endDate,
+          },
+        });
+
+        return updated;
+      });
+
+      return {
+        success: true,
+        message: 'Subscription immediately canceled',
+        subscription: updatedSubscription,
+        stripeResult,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update database after Stripe cancellation: ${error.message}`,
+      );
+      throw new BadRequestException(
+        'Failed to update subscription status in database',
+      );
+    }
   }
 
   //   async getBusinesses() {
@@ -1184,120 +1494,6 @@ export class BusinessUsersService {
   //     };
   //   }
 
-  //   async getSubscription(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     if (!biz?.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked');
-
-  //     // List subscriptions for this Stripe customer
-  //     const subscriptions = await this.stripe.subscriptions.list({
-  //       customer: biz.stripeCustomerId,
-  //       status: 'all',
-  //       expand: ['data.plan.product'],
-  //     });
-
-  //     return subscriptions.data;
-  //   }
-
-  //   async getPayments(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     console.log('Business fetched for payments:', biz);
-  //     if (!biz) throw new NotFoundException('Business not found'); // Business doesn't exist
-  //     if (!biz.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked'); // Matches test
-
-  //     const payments = await this.stripe.paymentIntents.list({
-  //       customer: biz.stripeCustomerId,
-  //     });
-
-  //     console.log(
-  //       'Fetched payments for business:',
-  //       businessId,
-  //       payments.data.length,
-  //     );
-
-  //     return payments.data;
-  //   }
-
-  //   async getFailedPayments(businessId: string) {
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { id: businessId },
-  //     });
-  //     if (!biz?.stripeCustomerId)
-  //       throw new NotFoundException('Stripe customer not linked');
-
-  //     const all = await this.stripe.paymentIntents.list({
-  //       customer: biz.stripeCustomerId,
-  //     });
-
-  //     return all.data.filter(
-  //       (pi) =>
-  //         pi.status === 'requires_payment_method' || pi.status === 'canceled',
-  //     );
-  //   }
-
-  //   async cancelSubscription(id: string) {
-  //     console.log('Canceling subscription for business ID:', id);
-  //     const biz = await this.prisma.business.findUnique({
-  //       where: { userId: id },
-  //     });
-  //     if (!biz) throw new NotFoundException('Business not found');
-
-  //     if (!biz.stripeSubscriptionId)
-  //       throw new NotFoundException('Subscription not linked');
-
-  //     const canceled = await this.stripe.subscriptions.cancel(
-  //       biz.stripeSubscriptionId,
-  //     );
-
-  //     // Update database to reflect cancellation
-  //     await this.prisma.business.update({
-  //       where: { userId: id },
-  //       data: {
-  //         stripeSubscriptionId: null, // remove the subscription ID
-  //         // optionally record cancellation timestamp/status:
-  //         subscriptionStatus: canceled.status,
-  //       },
-  //     });
-
-  //     return { success: true, status: canceled.status };
-  //   }
-
-  //   // Immediate DB update in refundPayment()
-  //   async refundPayment(paymentIntentId: string) {
-  //     const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId);
-
-  //     if (pi.status !== 'succeeded') {
-  //       throw new Error(`Cannot refund: ${pi.status}`);
-  //     }
-
-  //     // Optimistic update
-  //     await this.prisma.transaction.update({
-  //       where: { stripePaymentId: paymentIntentId },
-  //       data: { status: 'refund_pending' },
-  //     });
-
-  //     const refund = await this.stripe.refunds.create({
-  //       payment_intent: paymentIntentId,
-  //       reason: 'requested_by_customer',
-  //     });
-
-  //     // Confirm update
-  //     await this.prisma.transaction.update({
-  //       where: { stripePaymentId: paymentIntentId },
-  //       data: {
-  //         status: 'refunded',
-  //         refundAmount: refund.amount,
-  //       },
-  //     });
-
-  //     return refund;
-  //   }
-
   //   async getDisputes(businessId: string) {
   //     const biz = await this.prisma.business.findUnique({
   //       where: { id: businessId },
@@ -1312,110 +1508,8 @@ export class BusinessUsersService {
   //     return disputes.data;
   //   }
 
-  //   // In your BusinessService's getAllPayments method:
-  //   async getAllPayments(limit = 50, cursor?: string) {
-  //     const where: any = {};
-
-  //     if (cursor) {
-  //       const cursorTransaction = await this.prisma.transaction.findUnique({
-  //         where: { id: cursor },
-  //       });
-
-  //       if (cursorTransaction) {
-  //         where.createdAt = { lt: cursorTransaction.createdAt };
-  //       }
-  //     }
-
-  //     const transactions = await this.prisma.transaction.findMany({
-  //       take: limit,
-  //       where,
-  //       orderBy: { createdAt: 'desc' },
-  //       include: {
-  //         business: {
-  //           include: {
-  //             user: {
-  //               select: {
-  //                 name: true,
-  //                 email: true,
-  //               },
-  //             },
-  //           },
-  //         },
-  //       },
-  //     });
-
-  //     // Format for frontend
-  //     const formattedData = transactions.map((t) => ({
-  //       id: t.id,
-  //       stripePaymentId: t.stripePaymentId,
-  //       description: t.description || 'Payment',
-  //       amount: t.amount,
-  //       refundAmount: t.refundAmount,
-  //       currency: t.currency,
-  //       status: t.status,
-  //       refunded: t.refundAmount > 0,
-  //       userName: t.business?.user?.name || t.userName || 'Unknown User',
-  //       userEmail: t.business?.user?.email || t.userEmail || 'No Email',
-  //       businessId: t.business?.id,
-  //       businessName: t.business?.name,
-  //       createdAt: t.createdAt.toISOString(),
-  //       customerId: t.business?.stripeCustomerId,
-  //     }));
-
-  //     const nextCursor =
-  //       transactions.length > 0
-  //         ? transactions[transactions.length - 1].id
-  //         : undefined;
-
-  //     return {
-  //       data: formattedData,
-  //       hasMore: transactions.length === limit,
-  //       nextCursor,
-  //     };
-  //   }
-
-  //   async getAllFailedPayments(limit = 50, starting_after?: string) {
-  //     const all = await this.stripe.paymentIntents.list({
-  //       limit,
-  //       starting_after,
-  //     });
-  //     return all.data.filter(
-  //       (pi) =>
-  //         pi.status === 'requires_payment_method' || pi.status === 'canceled',
-  //     );
-  //   }
-
   //   async getAllDisputes(limit = 50, starting_after?: string) {
   //     const disputes = await this.stripe.disputes.list({ limit, starting_after });
   //     return disputes.data;
-  //   }
-
-  //   async getAllRefunds(limit = 50, starting_after?: string) {
-  //     const refunds = await this.stripe.refunds.list({ limit, starting_after });
-  //     return refunds.data;
-  //   }
-
-  //   async getGlobalPaymentStats() {
-  //     const stats = await this.prisma.transaction.aggregate({
-  //       _sum: {
-  //         amount: true,
-  //         refundAmount: true,
-  //       },
-  //       _count: {
-  //         id: true,
-  //       },
-  //     });
-
-  //     const succeededTotal = await this.prisma.transaction.aggregate({
-  //       where: { status: 'succeeded' },
-  //       _sum: { amount: true },
-  //     });
-
-  //     return {
-  //       totalTransactions: stats._count.id,
-  //       completedRevenue: (succeededTotal._sum.amount || 0) / 100,
-  //       totalVolume: (stats._sum.amount || 0) / 100,
-  //       totalRefunded: (stats._sum.refundAmount || 0) / 100,
-  //     };
   //   }
 }

@@ -403,6 +403,7 @@ function UsersTable({
                 >
                   Email
                 </SortableHeader>
+                <th className="p-4 text-left font-medium">Businesses</th>
                 <SortableHeader
                   field="type"
                   activeField={sortField}
@@ -433,7 +434,7 @@ function UsersTable({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center">
+                  <td colSpan={7} className="py-12 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     <p className="mt-2 text-sm text-muted-foreground">
                       Loading users...
@@ -443,7 +444,7 @@ function UsersTable({
               ) : paginatedUsers.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="py-12 text-center text-muted-foreground"
                   >
                     No users found.
@@ -479,6 +480,26 @@ function UsersTable({
                         : "ACTIVE"
                       : user.status || "UNKNOWN";
 
+                  // Get businesses for the user (if any)
+                  const businesses = (() => {
+                    if (
+                      "businesses" in user &&
+                      user.businesses &&
+                      user.businesses.length > 0
+                    ) {
+                      // Business user case
+                      return user.businesses.map((b) => b.name);
+                    } else if (
+                      "businessClients" in user &&
+                      user.businessClients &&
+                      user.businessClients.length > 0
+                    ) {
+                      // Consumer case - they might be clients of businesses
+                      return user.businessClients.map((bc) => bc.business.name);
+                    }
+                    return [];
+                  })();
+
                   return (
                     <tr key={user.id}>
                       <td className="p-4">
@@ -495,12 +516,38 @@ function UsersTable({
                               {user.businesses?.length || 0} business(es)
                             </p>
                           )}
+
                         {userTypeValue === "influencer" &&
                           "campaignStats" in user && (
                             <p className="text-xs text-muted-foreground">
                               {user.campaignStats?.totalOffers || 0} campaigns
                             </p>
                           )}
+                      </td>
+                      <td className="p-4">
+                        {businesses.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {businesses
+                              .slice(0, 2)
+                              .map((businessName, index) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary"
+                                >
+                                  {businessName}
+                                </span>
+                              ))}
+                            {businesses.length > 2 && (
+                              <span className="text-xs text-muted-foreground">
+                                +{businesses.length - 2} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            —
+                          </span>
+                        )}
                       </td>
                       <td className="p-4">
                         <UserTypeBadge type={userTypeValue || "unknown"} />

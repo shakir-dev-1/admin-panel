@@ -453,6 +453,51 @@ export function useConsumerPayments() {
   };
 }
 
+export function useConsumerPaymentsByUserId(
+  userId: string,
+  params?: { limit?: number },
+) {
+  const { token } = useAuth();
+  const limit = params?.limit ?? 50;
+
+  const query = useInfiniteQuery({
+    queryKey: ["consumerPayments", "user", userId, limit],
+    queryFn: async ({ pageParam }: { pageParam?: string }) => {
+      if (!token) throw new Error("Not authenticated");
+      if (!userId) throw new Error("User ID is required");
+
+      const qs = new URLSearchParams({ limit: limit.toString() });
+      if (pageParam) qs.append("cursor", pageParam);
+
+      return fetchWithAuth<PaginatedResponse<ConsumerPayment>>(
+        `/admin/payments/consumer-payments/${userId}?${qs}`,
+        token,
+      );
+    },
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!token && !!userId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allPayments = query.data?.pages.flatMap((p) => p.data) ?? [];
+
+  return {
+    payments: allPayments,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    hasMore: query.hasNextPage,
+    loadMore: query.fetchNextPage,
+    refetch: query.refetch,
+    isFetchingNextPage: query.isFetchingNextPage,
+
+    // Computed values
+    totalSpent: allPayments.reduce((sum, p) => sum + p.amount, 0),
+    totalRefunded: allPayments.reduce((sum, p) => sum + p.refundAmount, 0),
+    completedCount: allPayments.filter((p) => p.status === "PAID").length,
+  };
+}
+
 export function useConsumerPaymentStats() {
   const { token } = useAuth();
 
@@ -512,6 +557,59 @@ export function useBusinessUserPayments(params?: {
     loadMore: query.fetchNextPage,
     refetch: query.refetch,
     isFetchingNextPage: query.isFetchingNextPage,
+  };
+}
+
+/**
+ * Hook to fetch payments made directly by a specific business user
+ * This only includes add-on payments since subscriptions are tied to the business, not the user
+ */
+export function useBusinessUserPaymentsByUserId(
+  userId: string,
+  params?: { limit?: number },
+) {
+  const { token } = useAuth();
+  const limit = params?.limit ?? 50;
+
+  const query = useInfiniteQuery({
+    queryKey: ["businessUserPayments", "direct", userId, limit],
+    queryFn: async ({ pageParam }: { pageParam?: string }) => {
+      if (!token) throw new Error("Not authenticated");
+      if (!userId) throw new Error("User ID is required");
+
+      const qs = new URLSearchParams({ limit: limit.toString() });
+      if (pageParam) qs.append("cursor", pageParam);
+
+      const response = await fetchWithAuth<
+        PaginatedResponse<BusinessUserPayment>
+      >(`/admin/payments/business-user-payments/${userId}?${qs}`, token);
+
+      return response;
+    },
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
+    },
+    enabled: !!token && !!userId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allPayments = query.data?.pages.flatMap((p) => p.data) ?? [];
+  const addOnPayments = allPayments.filter((p) => p.entryType === "addon");
+
+  return {
+    payments: addOnPayments,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    hasMore: query.hasNextPage, // Use TanStack's value
+    loadMore: query.fetchNextPage,
+    refetch: query.refetch,
+    isFetchingNextPage: query.isFetchingNextPage,
+    totalSpent: addOnPayments.reduce((sum, p) => sum + (p.amount || 0), 0),
+    pendingPayments: addOnPayments.filter((p) => p.status === "PENDING").length,
+    successfulPayments: addOnPayments.filter((p) => p.status === "SUCCESS")
+      .length,
+    failedPayments: addOnPayments.filter((p) => p.status === "FAILED").length,
   };
 }
 

@@ -46,10 +46,30 @@ export type User = {
     name: string;
   }>;
   businessClients: Array<{
+    id: string;
+    fullName: string;
+    phoneNumber: string;
+    email: string;
     business: {
       id: string;
       name: string;
     };
+    appointments?: Array<{
+      id: string;
+      start: string;
+      end: string;
+      status: string;
+      businessService?: {
+        service: { title: string };
+      };
+      businessPackage?: { title: string };
+      invoice?: {
+        id: string;
+        amountDue: number;
+        amountPaid: number | null;
+        paymentStatus: string;
+      };
+    }>;
   }>;
   reviews: Array<{
     id: string;
@@ -74,17 +94,21 @@ export type User = {
   }>;
 };
 
-export type SubscriptionStatus = 'ACTIVE' | 'INACTIVE' | 'TRIAL' | 'CANCELLED';
-export type BillingCycle = 'YEAR' | 'MONTH';
-export type PaymentStatus = 'PAID' | 'PREPAID' | 'UNPAID' | 'FAILED' | 'REFUNDED';
-export type JsonValue = 
+export type SubscriptionStatus = "ACTIVE" | "INACTIVE" | "TRIAL" | "CANCELLED";
+export type BillingCycle = "YEAR" | "MONTH";
+export type PaymentStatus =
+  | "PAID"
+  | "PREPAID"
+  | "UNPAID"
+  | "FAILED"
+  | "REFUNDED";
+export type JsonValue =
   | string
   | number
   | boolean
   | null
   | JsonValue[]
   | { [key: string]: JsonValue };
-
 
 export type BusinessUser = {
   id: string;
@@ -141,6 +165,21 @@ export type BusinessUser = {
     role: string; // Role name (OWNER, EMPLOYEE, ADMIN, USER)
     joinedAt: string; // When they joined the business
     memberId: string; // BusinessMember ID
+    designation?: string | null;
+    onlineBooking?: boolean;
+    walkInBooking?: boolean;
+    averageRating?: number | null;
+    about?: string | null;
+    phoneNumber?: string | null;
+    email?: string | null;
+    website?: string | null;
+    description?: string | null;
+    address?: string | null;
+    state?: string | null;
+    zipcode?: string | null;
+    businessAverageRating?: number | null;
+    businessTotalAverageRating?: number | null;
+    stripeAccountId?: string | null;
     subscriptions: Array<{
       id: string;
       status: SubscriptionStatus;
@@ -865,11 +904,11 @@ export function useUsersManagement() {
     return response;
   };
 
-   const cancelSubscription = async (
+  const cancelSubscription = async (
     businessId: string,
     options?: {
       immediate?: boolean;
-    }
+    },
   ): Promise<CancelSubscriptionResponse> => {
     if (!token) throw new Error("No authentication token");
 
@@ -895,7 +934,7 @@ export function useUsersManagement() {
     queryClient.invalidateQueries({
       queryKey: queryKeys.users.business(),
     });
-    
+
     return response;
   };
 
@@ -921,13 +960,11 @@ export function useUsersManagement() {
     changeInfluencerEmail,
     changeInfluencerPhone,
     changeInfluencerStatus,
-    getInfluencerById,    
+    getInfluencerById,
     cancelSubscription,
     getBusinessSubscription,
   };
 }
-
-
 
 // Combined hook for all users with React Query
 export function useAllUsers() {

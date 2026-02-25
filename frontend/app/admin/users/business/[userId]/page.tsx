@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 // frontend/app/admin/business/users/[userId]/page.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -25,6 +25,9 @@ import {
   BadgeCheck,
   AlertCircle,
   XCircle,
+  Loader2,
+  Receipt,
+  Package,
 } from "lucide-react";
 import { StatusBadge } from "@/app/components/admin/StatusBadge";
 import { UserTypeBadge } from "@/app/components/admin/UserTypeBadge";
@@ -59,9 +62,18 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 // import { fetchWithAuth } from "@/lib/api";
-import { safeFormatDate } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useBusinessUserById } from "@/hooks/useUsers";
 import { CancelSubscriptionButton } from "@/app/components/admin/CancelSubscriptionButton";
+import { useBusinessUserPaymentsByUserId } from "@/hooks/usePayments";
+import { format } from "date-fns";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 
 export default function BusinessUserDetail() {
   const params = useParams();
@@ -83,9 +95,53 @@ export default function BusinessUserDetail() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
-
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all");
   const { resetPassword, changeEmail, changePhone, cancelSubscription } =
     useUsersManagement();
+
+  const {
+    payments: userPayments,
+    loading: paymentsLoading,
+    error: paymentsError,
+    totalSpent,
+    pendingPayments,
+    successfulPayments,
+    failedPayments,
+    hasMore,
+    loadMore,
+  } = useBusinessUserPaymentsByUserId(userId, { limit: 20 });
+
+  const filteredPayments = useMemo(() => {
+    if (paymentStatusFilter === "all") return userPayments;
+    return userPayments.filter(
+      (payment) => payment.status === paymentStatusFilter,
+    );
+  }, [userPayments, paymentStatusFilter]);
+
+  const filteredTotalSpent = useMemo(() => {
+    return filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  }, [filteredPayments]);
+
+  const filteredSuccessfulPayments = useMemo(() => {
+    return filteredPayments.filter((p) => p.status === "SUCCESS").length;
+  }, [filteredPayments]);
+
+  const filteredPendingPayments = useMemo(() => {
+    return filteredPayments.filter((p) => p.status === "PENDING").length;
+  }, [filteredPayments]);
+
+  const filteredFailedPayments = useMemo(() => {
+    return filteredPayments.filter((p) => p.status === "FAILED").length;
+  }, [filteredPayments]);
+
+  // Add this helper function near the top with other helpers
+  const formatAmount = (amount: number, currency: string = "USD") => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
 
   if (isLoading) {
     return (
@@ -281,6 +337,7 @@ export default function BusinessUserDetail() {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="businesses">Businesses</TabsTrigger>
+            <TabsTrigger value="payments">Payments</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
@@ -573,7 +630,9 @@ export default function BusinessUserDetail() {
                                         planName={sub.plan.title}
                                         status={sub.status}
                                         endDate={sub.endDate?.toString()}
-                                        cancelAtPeriodEnd={sub.cancelAtPeriodEnd}
+                                        cancelAtPeriodEnd={
+                                          sub.cancelAtPeriodEnd
+                                        }
                                         size="sm"
                                         variant="destructive"
                                         onSuccess={refetch}
@@ -664,95 +723,267 @@ export default function BusinessUserDetail() {
             </div>
           </TabsContent>
 
-          {/* Businesses Tab - FIXED */}
+          {/* Businesses Tab - Enhanced Version */}
           <TabsContent value="businesses" className="space-y-6">
             <div className="admin-card">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-4">
                 <Building2 className="h-5 w-5 text-muted-foreground" />
                 <h2 className="text-lg font-semibold">Associated Businesses</h2>
                 <Badge variant="outline">
                   {user.businesses?.length || 0} business(es)
                 </Badge>
               </div>
-              <div className="mt-4 space-y-4">
+
+              <div className="space-y-4">
                 {!user.businesses || user.businesses.length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground">
                     No businesses associated with this user
                   </div>
                 ) : (
                   user.businesses.map((business) => {
+                    // Find the user's specific membership details for this business
+                    const membership = business.memberId
+                      ? {
+                          // You might need to fetch this from your data structure
+                          onlineBooking: business.onlineBooking,
+                          walkInBooking: business.walkInBooking,
+                          designation: business.designation,
+                          businessAverageRating: business.businessAverageRating,
+                        }
+                      : null;
+
                     return (
                       <div
                         key={business.memberId || business.id}
-                        className="rounded-lg border p-4"
+                        className="rounded-lg border p-4 hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="font-semibold">{business.name}</h3>
+                            {/* Header with business name and badges */}
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                              <h3 className="font-semibold text-lg">
+                                {business.name}
+                              </h3>
                               {business.isVerified && (
                                 <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
                                   <BadgeCheck className="mr-1 h-3 w-3" />
                                   Verified
                                 </Badge>
                               )}
+                              {/* Business status badge */}
+                              <Badge
+                                variant="outline"
+                                className={
+                                  business.isVerified
+                                    ? "bg-green-50 text-green-700"
+                                    : "bg-yellow-50 text-yellow-700"
+                                }
+                              >
+                                {business.isVerified
+                                  ? "Active"
+                                  : "Pending Verification"}
+                              </Badge>
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                            {/* Role and Designation */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-3">
                               <div>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Briefcase className="h-3 w-3" />
                                   Role
                                 </p>
                                 <Badge
                                   variant="outline"
-                                  className="capitalize mt-1"
+                                  className="capitalize mt-1 font-medium"
                                 >
                                   {business.role.toLowerCase()}
                                 </Badge>
                               </div>
+
+                              {business.designation && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Designation
+                                  </p>
+                                  <p className="text-sm font-medium mt-1">
+                                    {business.designation}
+                                  </p>
+                                </div>
+                              )}
+
                               <div>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
                                   Joined
                                 </p>
-                                <p className="text-sm font-medium">
+                                <p className="text-sm font-medium mt-1">
                                   {safeFormatDate(
                                     business.joinedAt,
                                     "MMM d, yyyy",
                                   )}
                                 </p>
                               </div>
+
                               <div>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" />
                                   Location
                                 </p>
-                                <p className="text-sm font-medium">
+                                <p className="text-sm font-medium mt-1">
                                   {business.city}, {business.country}
                                 </p>
                               </div>
+                            </div>
+
+                            {/* Additional Details Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 text-sm">
                               <div>
                                 <p className="text-xs text-muted-foreground">
                                   Industry
                                 </p>
-                                <p className="text-sm font-medium">
-                                  {business.industryType?.join(", ") || "N/A"}
-                                </p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {business.industryType?.length > 0 ? (
+                                    business.industryType.map(
+                                      (industry, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="text-xs bg-muted px-2 py-0.5 rounded-full"
+                                        >
+                                          {industry}
+                                        </span>
+                                      ),
+                                    )
+                                  ) : (
+                                    <span className="text-sm">N/A</span>
+                                  )}
+                                </div>
                               </div>
+
+                              {/* Business Contact Info */}
+                              {business.phoneNumber && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    Phone
+                                  </p>
+                                  <p className="text-sm font-medium mt-1">
+                                    {business.phoneNumber}
+                                  </p>
+                                </div>
+                              )}
+
+                              {business.email && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    Email
+                                  </p>
+                                  <p className="text-sm font-medium mt-1 truncate">
+                                    {business.email}
+                                  </p>
+                                </div>
+                              )}
+
+                              {business.website && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Website
+                                  </p>
+                                  <a
+                                    href={business.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 hover:underline truncate block mt-1"
+                                  >
+                                    {business.website.replace(
+                                      /^https?:\/\//,
+                                      "",
+                                    )}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Business Stats */}
+                            <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t">
+                              {business.businessAverageRating && (
+                                <div className="flex items-center gap-1">
+                                  <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                  <span className="text-sm font-medium">
+                                    {business.businessAverageRating.toFixed(1)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    avg rating
+                                  </span>
+                                </div>
+                              )}
+
+                              {business.businessTotalAverageRating && (
+                                <div className="flex items-center gap-1">
+                                  <Star className="h-4 w-4 text-yellow-500" />
+                                  <span className="text-sm font-medium">
+                                    {business.businessTotalAverageRating.toFixed(
+                                      1,
+                                    )}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    overall
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Employee-specific settings */}
+                              {membership && (
+                                <>
+                                  {membership.onlineBooking !== undefined && (
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        membership.onlineBooking
+                                          ? "bg-green-50"
+                                          : "bg-gray-50"
+                                      }
+                                    >
+                                      Online Booking:{" "}
+                                      {membership.onlineBooking ? "Yes" : "No"}
+                                    </Badge>
+                                  )}
+                                  {membership.walkInBooking !== undefined && (
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        membership.walkInBooking
+                                          ? "bg-green-50"
+                                          : "bg-gray-50"
+                                      }
+                                    >
+                                      Walk-in:{" "}
+                                      {membership.walkInBooking ? "Yes" : "No"}
+                                    </Badge>
+                                  )}
+                                </>
+                              )}
                             </div>
                           </div>
 
+                          {/* Action Buttons */}
                           {/* <div className="flex flex-col gap-2 ml-4">
                             {business.id && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  router.push(
-                                    `/admin/businesses/${business.id}`,
-                                  )
-                                }
-                              >
-                                View Business
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    router.push(
+                                      `/admin/businesses/${business.id}`,
+                                    )
+                                  }
+                                  className="whitespace-nowrap"
+                                >
+                                  <Building2 className="mr-1 h-4 w-4" />
+                                  View Business
+                                </Button>
+                              </>
                             )}
                           </div> */}
                         </div>
@@ -761,6 +992,197 @@ export default function BusinessUserDetail() {
                   })
                 )}
               </div>
+            </div>
+          </TabsContent>
+
+          {/* Payments Tab - Fixed */}
+          <TabsContent value="payments" className="space-y-6">
+            <div className="admin-card">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="text-lg font-semibold">Add-On Purchases</h2>
+                  <Badge variant="outline">
+                    {filteredPayments.length} of {userPayments.length} purchases
+                  </Badge>
+                </div>
+
+                {/* Filter by add-on status */}
+                <Select
+                  value={paymentStatusFilter}
+                  onValueChange={setPaymentStatusFilter}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Filter by Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="SUCCESS">Successful</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="FAILED">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {paymentsLoading && userPayments.length === 0 ? (
+                <div className="flex min-h-[200px] items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : paymentsError ? (
+                <div className="flex items-center justify-center min-h-[200px] text-red-500">
+                  Error loading purchases: {paymentsError}
+                </div>
+              ) : userPayments.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">
+                    No add-on purchases found
+                  </p>
+                  <p className="text-sm mt-1">
+                    This user hasn&apos;t purchased any add-ons yet.
+                  </p>
+                </div>
+              ) : filteredPayments.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">
+                    No purchases match the selected filter
+                  </p>
+                  <Button
+                    variant="link"
+                    onClick={() => setPaymentStatusFilter("all")}
+                    className="mt-2"
+                  >
+                    Clear filter
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Summary Cards - Now showing filtered stats */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Total Spent
+                      </p>
+                      <p className="text-xl font-bold mt-1">
+                        {formatAmount(filteredTotalSpent)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Successful
+                      </p>
+                      <p className="text-xl font-bold mt-1 text-green-600">
+                        {filteredSuccessfulPayments}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">Pending</p>
+                      <p className="text-xl font-bold mt-1 text-yellow-600">
+                        {filteredPendingPayments}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">Failed</p>
+                      <p className="text-xl font-bold mt-1 text-red-600">
+                        {filteredFailedPayments}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Add-Ons List */}
+                  <div className="space-y-3">
+                    {filteredPayments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="rounded-lg border p-4 hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Icon for add-ons */}
+                          <div className="p-2 rounded-lg bg-purple-500/10">
+                            <Package className="h-5 w-5 text-purple-600" />
+                          </div>
+
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium">
+                                {payment.description}
+                              </p>
+                              <StatusBadge status={payment.status} />
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-sm">
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Business
+                                </p>
+                                <p className="font-medium">
+                                  {payment.businessName}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Amount
+                                </p>
+                                <p className="font-semibold">
+                                  {payment.amount !== null
+                                    ? formatAmount(
+                                        payment.amount,
+                                        payment.currency,
+                                      )
+                                    : "—"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Date
+                                </p>
+                                <p className="text-sm">
+                                  {format(
+                                    new Date(payment.createdAt),
+                                    "MMM d, yyyy",
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Purchase ID
+                                </p>
+                                <p className="font-mono text-xs">
+                                  {payment.id}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Load More Button - only show if there are more pages AND we're not filtering */}
+                  {hasMore && paymentStatusFilter === "all" && (
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => loadMore()}
+                        disabled={paymentsLoading}
+                      >
+                        {paymentsLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load More Purchases"
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </TabsContent>
 

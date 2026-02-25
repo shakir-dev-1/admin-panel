@@ -303,7 +303,8 @@ function ConsumerPaymentsTab({
           p.businessName?.toLowerCase().includes(s) ||
           p.id.toLowerCase().includes(s) ||
           p.serviceName?.toLowerCase().includes(s) ||
-          p.packageName?.toLowerCase().includes(s),
+          p.packageName?.toLowerCase().includes(s) ||
+          p.stripePaymentIntentId?.toLowerCase().includes(s),
       );
     }
 
@@ -409,7 +410,7 @@ function ConsumerPaymentsTab({
           <SearchInput
             value={search}
             onChange={(v) => set({ search: v, page: 1 })}
-            placeholder="Search by name, email, business, or service..."
+            placeholder="Search by name, email, business, service, package, or stripe ID..."
             className="flex-1"
           />
           <Select
@@ -556,10 +557,17 @@ function ConsumerPaymentsTab({
                 ) : (
                   pageItems.map((p) => (
                     <tr key={p.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3 font-mono text-xs">{p.id}</td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{p.consumerName ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">
+                      {/* ID Column: Small and Fixed */}
+                      <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground ">
+                        {p.id}
+                      </td>
+
+                      {/* Consumer Info: Wrapped and Capped */}
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <p className="font-medium leading-none mb-1 break-words">
+                          {p.consumerName ?? "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground break-all">
                           {p.consumerEmail ?? p.consumerPhone ?? ""}
                         </p>
                         {p.consumerUsername && (
@@ -568,25 +576,39 @@ function ConsumerPaymentsTab({
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3">{p.businessName ?? "—"}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
+
+                      {/* Business Name: Wrapped */}
+                      <td className="px-4 py-3 max-w-[150px] whitespace-normal break-words">
+                        {p.businessName ?? "—"}
+                      </td>
+
+                      {/* Service/Package: Wrapped */}
+                      <td className="px-4 py-3 text-sm text-muted-foreground max-w-[180px] whitespace-normal">
                         {p.serviceName ?? p.packageName ?? "—"}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">
+
+                      {/* Stripe ID: Broken so it doesn't push the width */}
+                      <td className="px-4 py-3 font-mono text-[10px] max-w-[120px] break-all text-muted-foreground">
                         {p.stripePaymentIntentId}
                       </td>
-                      <td className="px-4 py-3 font-semibold">
+
+                      {/* Amount: Prevent wrapping here to keep price together */}
+                      <td className="px-4 py-3 font-semibold whitespace-nowrap">
                         {formatAmount(p.amount, p.currency)}
                       </td>
+
                       <td className="px-4 py-3">
                         <StatusBadge status={p.status} />
                       </td>
+
                       <td className="px-4 py-3">
                         <StatusBadge status={p.paymentStatus} />
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground text-sm">
+
+                      <td className="px-4 py-3 text-muted-foreground text-sm whitespace-nowrap">
                         {format(new Date(p.createdAt), "MMM d, yyyy")}
                       </td>
+
                       <td className="px-4 py-3 text-right">
                         {(p.paymentStatus === "PAID" ||
                           p.paymentStatus === "PAID_OUT") && (
@@ -596,7 +618,7 @@ function ConsumerPaymentsTab({
                             onClick={() => onRefund(p)}
                             disabled={refunding}
                           >
-                            <RefreshCw className="mr-1 h-4 w-4" />
+                            <RefreshCw className="mr-1 h-3 w-3" />
                             Refund
                           </Button>
                         )}
@@ -2048,7 +2070,7 @@ export default function Payments() {
                   {[
                     {
                       label: "Total Transactions",
-                      value: consumerStats.totalTransactions.toString(),
+                      value: consumerStats.totalTransactions?.toString() || "0",
                       color: "text-blue-500",
                       bg: "bg-blue-500/10",
                       tip: "Appointment payments by consumers.",

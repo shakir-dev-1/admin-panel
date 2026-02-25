@@ -668,6 +668,151 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Get payments made by a specific consumer (regular user)
+   * This returns payments made by a consumer for their appointments
+   */
+  async getConsumerPaymentsByUserId(
+    userId: string,
+    limit = 50,
+    cursor?: string,
+  ) {
+    this.logger.log(`Fetching consumer payments for user: ${userId}`);
+
+    // Build where clause for transactions linked to this user
+    const where: Prisma.TransactionWhereInput = {
+      invoice: {
+        appointment: {
+          client: {
+            userId: userId, // Direct link to the user through BusinessClient
+          },
+        },
+      },
+    };
+
+    // Add cursor-based pagination
+    if (cursor) {
+      const cursorRecord = await this.prisma.transaction.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+
+      if (cursorRecord) {
+        where.createdAt = { lt: cursorRecord.createdAt };
+      } else {
+        // If cursor record doesn't exist, return empty result
+        return {
+          data: [],
+          hasMore: false,
+          nextCursor: undefined,
+        };
+      }
+    }
+
+    // Fetch transactions - fetch ONE extra to determine if there are more
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      take: limit + 1, // Fetch limit + 1 to check for more
+      orderBy: { createdAt: 'desc' },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            stripePaymentIntentId: true,
+            amountDue: true,
+            amountPaid: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            appointment: {
+              include: {
+                client: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        email: true,
+                        firstName: true,
+                        lastName: true,
+                        phoneNumber: true,
+                        username: true,
+                      },
+                    },
+                  },
+                },
+                businessService: {
+                  select: {
+                    id: true,
+                    price: true,
+                    service: { select: { title: true } },
+                  },
+                },
+                businessPackage: { select: { id: true, title: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Check if we have more records
+    const hasMore = transactions.length > limit;
+
+    // If we have more, remove the extra record
+    const records = hasMore ? transactions.slice(0, limit) : transactions;
+
+    // Format the response
+    const formattedData = records.map((t) => {
+      const client = t.invoice?.appointment?.client;
+      const user = client?.user;
+
+      return {
+        id: t.id,
+        amount: t.amountSent,
+        refundAmount: t.amountReceived,
+        currency: 'USD',
+        status: t.transactionStatus,
+        paymentStatus: t.paymentStatus,
+        type: t.transactionType,
+        businessId: t.businessId,
+        businessName: t.business?.name,
+        invoiceId: t.invoiceId,
+        stripePaymentIntentId: t.invoice?.stripePaymentIntentId ?? null,
+        userId: user?.id ?? client?.userId ?? null,
+        consumerEmail: user?.email ?? client?.email ?? null,
+        consumerName: user
+          ? `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            client?.fullName
+          : (client?.fullName ?? null),
+        consumerPhone: user?.phoneNumber ?? client?.phoneNumber ?? null,
+        consumerUsername: user?.username ?? null,
+        serviceName:
+          t.invoice?.appointment?.businessService?.service?.title ?? null,
+        packageName: t.invoice?.appointment?.businessPackage?.title ?? null,
+        appointmentStart: t.invoice?.appointment?.start?.toISOString() ?? null,
+        appointmentId: t.invoice?.appointment?.id ?? null,
+        createdAt: t.createdAt.toISOString(),
+      };
+    });
+
+    // Set nextCursor only if hasMore is true and we have records
+    const nextCursor =
+      hasMore && records.length > 0
+        ? records[records.length - 1].id
+        : undefined;
+
+    return {
+      data: formattedData,
+      hasMore,
+      nextCursor,
+    };
+  }
+
   async getConsumerPaymentStats() {
     // Define the base condition for consumer payments
     const consumerPaymentCondition = {
@@ -759,15 +904,28 @@ export class PaymentsService {
 
   // ─── BusinessUser Payments (Business → Platform) ───────────────────────────
 
+  // Update the getBusinessUserPayments method to accept optional businessIds filter
   async getBusinessUserPayments(
     limit = 50,
     cursor?: string,
     type: 'all' | 'subscription' | 'addon' = 'all',
+    businessIds?: string[], // Add this optional parameter
   ) {
+    // Build where clauses for both subscription and add-on queries
+    const subscriptionWhere: Prisma.BusinessSubscriptionWhereInput = {};
+    const addonWhere: Prisma.BusinessAddOnWhereInput = {};
+
+    // Filter by business IDs if provided
+    if (businessIds && businessIds.length > 0) {
+      subscriptionWhere.businessId = { in: businessIds };
+      addonWhere.businessId = { in: businessIds };
+    }
+
     // Fetch subscriptions and/or add-ons in parallel, then merge & sort
     const [subs, addons] = await Promise.all([
       type !== 'addon'
         ? this.prisma.businessSubscription.findMany({
+            where: subscriptionWhere,
             orderBy: { createdAt: 'desc' },
             include: {
               subscription: { select: { id: true, title: true, prices: true } },
@@ -796,6 +954,7 @@ export class PaymentsService {
 
       type !== 'subscription'
         ? this.prisma.businessAddOn.findMany({
+            where: addonWhere,
             orderBy: { createdAt: 'desc' },
             include: {
               business: {
@@ -933,6 +1092,97 @@ export class PaymentsService {
     return {
       data: page,
       hasMore: page.length === limit,
+      nextCursor,
+    };
+  }
+
+  /**
+   * Get payments made directly by a specific business user
+   * This only includes add-on payments since subscriptions are tied to the business, not the user
+   */
+  async getBusinessUserPaymentsByUserId(
+    userId: string,
+    limit = 50,
+    cursor?: string,
+  ) {
+    this.logger.log(`Fetching direct payments for business user: ${userId}`);
+
+    // Build where clause for add-ons purchased by this user
+    const where: Prisma.BusinessAddOnWhereInput = {
+      purchaseBy: {
+        businessUserId: userId,
+      },
+    };
+
+    // Add cursor-based pagination
+    if (cursor) {
+      const cursorRecord = await this.prisma.businessAddOn.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+      if (cursorRecord) {
+        where.createdAt = { lt: cursorRecord.createdAt };
+      }
+    }
+
+    // Fetch add-ons purchased by this user - fetch ONE extra to determine if there are more
+    const addOns = await this.prisma.businessAddOn.findMany({
+      where,
+      take: limit + 1, // Fetch limit + 1 to check for more
+      orderBy: { createdAt: 'desc' },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        purchaseBy: {
+          include: {
+            businessUser: {
+              select: {
+                id: true,
+                email: true,
+                fullName: true,
+                phoneNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Check if we have more records
+    const hasMore = addOns.length > limit;
+
+    // If we have more, remove the extra record
+    const records = hasMore ? addOns.slice(0, limit) : addOns;
+
+    // Format the response to match the existing BusinessUserPayment interface
+    const formattedData = records.map((addon) => ({
+      id: addon.id,
+      entryType: 'addon' as const,
+      businessId: addon.businessId,
+      businessName: addon.business?.name ?? '—',
+      businessUserEmail: addon.purchaseBy?.businessUser?.email ?? null,
+      businessUserName: addon.purchaseBy?.businessUser?.fullName ?? null,
+      businessUserPhone: addon.purchaseBy?.businessUser?.phoneNumber ?? null,
+      businessUserId: addon.purchaseBy?.businessUser?.id ?? null,
+      description: `${addon.type} Add-On`,
+      amount: addon.price,
+      currency: addon.currency,
+      status: addon.status,
+      billingCycle: undefined,
+      paymentStatus: undefined,
+      createdAt: addon.createdAt.toISOString(),
+    }));
+
+    const nextCursor =
+      records.length > 0 ? records[records.length - 1].id : undefined;
+
+    return {
+      data: formattedData,
+      hasMore,
       nextCursor,
     };
   }

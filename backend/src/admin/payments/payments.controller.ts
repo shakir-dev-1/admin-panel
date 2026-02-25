@@ -35,7 +35,7 @@ export class PaymentsController {
   // ─── Businesses ──────────────────────────────────────────────────────────
 
   @Get('businesses')
-  @Audit('VIEW_BUSINESSES')
+  // @Audit('VIEW_BUSINESSES')
   async getBusinesses() {
     return this.paymentsService.getBusinesses();
   }
@@ -43,7 +43,7 @@ export class PaymentsController {
   // ─── Consumer Payments (User → Business via Appointment) ─────────────────
 
   @Get('consumer-payments')
-  @Audit('VIEW_CONSUMER_PAYMENTS')
+  // @Audit('VIEW_CONSUMER_PAYMENTS')
   async getConsumerPayments(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -52,15 +52,28 @@ export class PaymentsController {
   }
 
   @Get('consumer-payments/stats')
-  @Audit('VIEW_CONSUMER_PAYMENT_STATS')
+  // @Audit('VIEW_CONSUMER_PAYMENT_STATS')
   async getConsumerPaymentStats() {
     return this.paymentsService.getConsumerPaymentStats();
+  }
+
+  @Get('consumer-payments/:userId')
+  async getConsumerPaymentsByUserId(
+    @Param('userId') userId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.paymentsService.getConsumerPaymentsByUserId(
+      userId,
+      limit,
+      cursor,
+    );
   }
 
   // ─── BusinessUser Payments (Business → Platform) ─────────────────────────
 
   @Get('business-user-payments')
-  @Audit('VIEW_BUSINESS_USER_PAYMENTS')
+  // @Audit('VIEW_BUSINESS_USER_PAYMENTS')
   async getBusinessUserPayments(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -74,15 +87,29 @@ export class PaymentsController {
   }
 
   @Get('business-user-payments/stats')
-  @Audit('VIEW_BUSINESS_USER_PAYMENT_STATS')
+  // @Audit('VIEW_BUSINESS_USER_PAYMENT_STATS')
   async getBusinessUserPaymentStats() {
     return this.paymentsService.getBusinessUserPaymentStats();
+  }
+
+  // In your payments controller
+  @Get('business-user-payments/:userId')
+  async getBusinessUserPaymentsByUserId(
+    @Param('userId') userId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.paymentsService.getBusinessUserPaymentsByUserId(
+      userId,
+      limit,
+      cursor,
+    );
   }
 
   // ─── Global Transactions ─────────────────────────────────────────────────
 
   @Get('payments')
-  @Audit('VIEW_ALL_PAYMENTS')
+  // @Audit('VIEW_ALL_PAYMENTS')
   async getAllPayments(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -91,13 +118,13 @@ export class PaymentsController {
   }
 
   @Get('payments/stats')
-  @Audit('VIEW_PAYMENT_STATS')
+  // @Audit('VIEW_PAYMENT_STATS')
   async getGlobalPaymentStats() {
     return this.paymentsService.getGlobalPaymentStats();
   }
 
   @Get('payments/failed')
-  @Audit('VIEW_FAILED_PAYMENTS')
+  // @Audit('VIEW_FAILED_PAYMENTS')
   async getAllFailedPayments(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -117,7 +144,7 @@ export class PaymentsController {
   // ─── Global Refunds ───────────────────────────────────────────────────────
 
   @Get('refunds')
-  @Audit('VIEW_ALL_REFUNDS')
+  // @Audit('VIEW_ALL_REFUNDS')
   async getAllRefunds(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -128,7 +155,7 @@ export class PaymentsController {
   // ─── Global Disputes ──────────────────────────────────────────────────────
 
   @Get('disputes')
-  @Audit('VIEW_ALL_DISPUTES')
+  // @Audit('VIEW_ALL_DISPUTES')
   async getAllDisputes(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('starting_after') startingAfter?: string,
@@ -139,13 +166,13 @@ export class PaymentsController {
   // ─── Subscription Plans ───────────────────────────────────────────────────
 
   @Get('subscription-plans')
-  @Audit('VIEW_SUBSCRIPTION_PLANS')
+  // @Audit('VIEW_SUBSCRIPTION_PLANS')
   async getAllSubscriptionPlans() {
     return this.paymentsService.getAllSubscriptionPlans();
   }
 
   @Get('subscriptions')
-  @Audit('VIEW_ALL_SUBSCRIPTIONS')
+  // @Audit('VIEW_ALL_SUBSCRIPTIONS')
   async getAllBusinessSubscriptions(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -161,7 +188,7 @@ export class PaymentsController {
   }
 
   @Get('subscriptions/:subscriptionId/history')
-  @Audit('VIEW_SUBSCRIPTION_HISTORY')
+  // @Audit('VIEW_SUBSCRIPTION_HISTORY')
   async getSubscriptionHistory(
     @Param('subscriptionId') subscriptionId: string,
   ) {
@@ -173,13 +200,13 @@ export class PaymentsController {
   // ─── Global Invoices ──────────────────────────────────────────────────────
 
   @Get('invoices/stats')
-  @Audit('VIEW_GLOBAL_INVOICE_STATS')
+  // @Audit('VIEW_GLOBAL_INVOICE_STATS')
   async getGlobalInvoiceStats() {
     return this.paymentsService.getInvoiceStats();
   }
 
   @Get('invoices/:invoiceId')
-  @Audit('VIEW_INVOICE')
+  // @Audit('VIEW_INVOICE')
   async getInvoice(@Param('invoiceId') invoiceId: string) {
     if (!invoiceId) throw new BadRequestException('Invoice ID is required');
     return this.paymentsService.getInvoice(invoiceId);
@@ -188,7 +215,7 @@ export class PaymentsController {
   // ─── Payout Info ─────────────────────────────────────────────────────────
 
   @Get('payout-info')
-  @Audit('VIEW_ALL_PAYOUT_INFO')
+  // @Audit('VIEW_ALL_PAYOUT_INFO')
   async getAllPayoutInfo(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -197,7 +224,7 @@ export class PaymentsController {
   }
 
   @Get('banks')
-  @Audit('VIEW_BANKS')
+  // @Audit('VIEW_BANKS')
   async getBanks() {
     return this.paymentsService.getBanks();
   }
@@ -205,7 +232,7 @@ export class PaymentsController {
   // ─── Add-Ons ─────────────────────────────────────────────────────────────
 
   @Get('add-ons')
-  @Audit('VIEW_ALL_ADD_ONS')
+  // @Audit('VIEW_ALL_ADD_ONS')
   async getAllAddOns(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
@@ -216,14 +243,14 @@ export class PaymentsController {
   // ─── Per-Business Routes ──────────────────────────────────────────────────
 
   @Get(':id')
-  @Audit('VIEW_BUSINESS_PAYMENT_DETAILS')
+  // @Audit('VIEW_BUSINESS_PAYMENT_DETAILS')
   async getBusiness(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getBusiness(id);
   }
 
   @Get(':id/subscription')
-  @Audit('VIEW_BUSINESS_SUBSCRIPTION')
+  // @Audit('VIEW_BUSINESS_SUBSCRIPTION')
   async getSubscription(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getSubscription(id);
@@ -238,21 +265,21 @@ export class PaymentsController {
   }
 
   @Get(':id/payments')
-  @Audit('VIEW_BUSINESS_PAYMENTS')
+  // @Audit('VIEW_BUSINESS_PAYMENTS')
   async getPayments(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getPayments(id);
   }
 
   @Get(':id/payments/failed')
-  @Audit('VIEW_BUSINESS_FAILED_PAYMENTS')
+  // @Audit('VIEW_BUSINESS_FAILED_PAYMENTS')
   async getFailedPayments(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getFailedPayments(id);
   }
 
   @Get(':id/invoices')
-  @Audit('VIEW_BUSINESS_INVOICES')
+  // @Audit('VIEW_BUSINESS_INVOICES')
   async getBusinessInvoices(
     @Param('id') id: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -268,35 +295,35 @@ export class PaymentsController {
   }
 
   @Get(':id/invoices/stats')
-  @Audit('VIEW_BUSINESS_INVOICE_STATS')
+  // @Audit('VIEW_BUSINESS_INVOICE_STATS')
   async getBusinessInvoiceStats(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getInvoiceStats(id);
   }
 
   @Get(':id/disputes')
-  @Audit('VIEW_BUSINESS_DISPUTES')
+  // @Audit('VIEW_BUSINESS_DISPUTES')
   async getDisputes(@Param('id') businessId: string) {
     if (!businessId) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getDisputes(businessId);
   }
 
   @Get(':id/payout-info')
-  @Audit('VIEW_BUSINESS_PAYOUT_INFO')
+  // @Audit('VIEW_BUSINESS_PAYOUT_INFO')
   async getBusinessPayoutInfo(@Param('id') businessId: string) {
     if (!businessId) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getBusinessPayoutInfo(businessId);
   }
 
   @Get(':id/add-ons')
-  @Audit('VIEW_BUSINESS_ADD_ONS')
+  // @Audit('VIEW_BUSINESS_ADD_ONS')
   async getBusinessAddOns(@Param('id') businessId: string) {
     if (!businessId) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getBusinessAddOns(businessId);
   }
 
   @Get(':id/clients')
-  @Audit('VIEW_BUSINESS_CLIENTS')
+  // @Audit('VIEW_BUSINESS_CLIENTS')
   async getBusinessClients(@Param('id') businessId: string) {
     if (!businessId) throw new BadRequestException('Business ID is required');
     return this.paymentsService.getBusinessClients(businessId);

@@ -128,6 +128,21 @@ export interface BusinessUserDetailResult {
     role: Roles;
     joinedAt: Date;
     memberId: string;
+    designation?: string | null;
+    onlineBooking?: boolean;
+    walkInBooking?: boolean;
+    averageRating?: number | null;
+    about?: string | null;
+    phoneNumber?: string | null;
+    email?: string | null;
+    website?: string | null;
+    description?: string | null;
+    address?: string | null;
+    state?: string | null;
+    zipcode?: string | null;
+    businessAverageRating?: number | null;
+    businessTotalAverageRating?: number | null;
+    stripeAccountId?: string | null;
     subscriptions: Array<{
       id: string;
       status: SubscriptionStatus;
@@ -658,6 +673,11 @@ export class BusinessUsersService {
               id: true,
               role: true,
               createdAt: true,
+              designation: true,
+              onlineBooking: true,
+              walkInBooking: true,
+              averageRating: true,
+              about: true,
               business: {
                 select: {
                   id: true,
@@ -666,6 +686,16 @@ export class BusinessUsersService {
                   city: true,
                   country: true,
                   isVerified: true,
+                  phoneNumber: true,
+                  email: true,
+                  website: true,
+                  description: true,
+                  address: true,
+                  state: true,
+                  zipcode: true,
+                  averageRating: true,
+                  totalAverageRating: true,
+                  stripeAccountId: true,
                   subscription: {
                     select: {
                       id: true,
@@ -748,7 +778,7 @@ export class BusinessUsersService {
             orderBy: {
               lastLogin: 'desc',
             },
-            take: 5, // Get last 5 login sessions
+            take: 5,
           },
           businessUserSettings: {
             select: {
@@ -768,15 +798,35 @@ export class BusinessUsersService {
       return {
         ...businessUser,
         businesses: businessUser.businesses.map((membership) => ({
-          id: membership.business.id, // Business ID
+          id: membership.business.id,
           name: membership.business.name,
           industryType: membership.business.industryType,
           city: membership.business.city,
           country: membership.business.country,
           isVerified: membership.business.isVerified,
-          role: membership.role.name, // Role from the membership
-          joinedAt: membership.createdAt, // When they joined (from BusinessMember)
-          memberId: membership.id, // BusinessMember ID
+          role: membership.role.name,
+          joinedAt: membership.createdAt,
+          memberId: membership.id,
+          // New business member fields
+          designation: membership.designation,
+          onlineBooking: membership.onlineBooking,
+          walkInBooking: membership.walkInBooking,
+          averageRating: membership.averageRating,
+          about: membership.about,
+          // Business contact info
+          phoneNumber: membership.business.phoneNumber,
+          email: membership.business.email,
+          website: membership.business.website,
+          description: membership.business.description,
+          address: membership.business.address,
+          state: membership.business.state,
+          zipcode: membership.business.zipcode,
+          // Business ratings
+          businessAverageRating: membership.business.averageRating,
+          businessTotalAverageRating: membership.business.totalAverageRating,
+          // Stripe account
+          stripeAccountId: membership.business.stripeAccountId,
+          // Subscriptions
           subscriptions: membership.business.subscription.map((sub) => ({
             id: sub.id,
             status: sub.status,
@@ -806,7 +856,6 @@ export class BusinessUsersService {
               key: businessUser.avatar.key,
             }
           : null,
-        // Add last login fields
         lastLoginAt: lastLoginAt,
         lastLoginDevice: lastLoginToken?.device || null,
         lastLoginIp: lastLoginToken?.ipAddress || null,
@@ -814,7 +863,6 @@ export class BusinessUsersService {
           lastLoginToken?.city || lastLoginToken?.country
             ? `${lastLoginToken.city || ''}${lastLoginToken.city && lastLoginToken.country ? ', ' : ''}${lastLoginToken.country || ''}`
             : null,
-        // Include all recent login sessions
         recentLoginSessions: businessUser.refreshTokens.map((token) => ({
           id: token.id,
           lastLogin: token.lastLogin,

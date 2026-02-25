@@ -720,6 +720,10 @@ export default function UsersPage() {
   const totalUsers = currentUsers.length;
   const totalPages = Math.max(1, Math.ceil(totalUsers / itemsPerPage));
 
+  const isLoading = useMemo(() => {
+    return consumerLoading || businessLoading || influencerLoading;
+  }, [consumerLoading, businessLoading, influencerLoading]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -752,65 +756,98 @@ export default function UsersPage() {
         </p>
       </div>
 
-      {/* Stats Dashboard with Tooltips */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Users"
-          value={stats.total}
-          icon={<Users className="h-5 w-5 text-primary" />}
-          tooltip="Total number of registered users across all account types (consumers, business users, and influencers)"
-        />
+      {/* Stats Dashboard with Tooltips - Show skeleton while loading */}
+      {isLoading ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="admin-stat-card animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-muted" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-20 rounded bg-muted" />
+                    <div className="h-8 w-16 rounded bg-muted" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="admin-stat-card animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-muted" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-20 rounded bg-muted" />
+                    <div className="h-8 w-16 rounded bg-muted" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard
+              title="Total Users"
+              value={stats.total}
+              icon={<Users className="h-5 w-5 text-primary" />}
+              tooltip="Total number of registered users across all account types (consumers, business users, and influencers)"
+            />
 
-        <StatCard
-          title="Active Users"
-          value={stats.active}
-          icon={<div className="h-5 w-5 text-green-600 font-bold">✓</div>}
-          valueClassName="text-green-600"
-          tooltip="Users with confirmed email addresses. For consumers, they must also not be banned."
-        />
+            <StatCard
+              title="Active Users"
+              value={stats.active}
+              icon={<div className="h-5 w-5 text-green-600 font-bold">✓</div>}
+              valueClassName="text-green-600"
+              tooltip="Users with confirmed email addresses. For consumers, they must also not be banned."
+            />
 
-        <StatCard
-          title="Inactive Users"
-          value={stats.inactive}
-          icon={<div className="h-5 w-5 text-amber-600 font-bold">!</div>}
-          valueClassName="text-amber-600"
-          tooltip="Users with unconfirmed emails. For consumers, this excludes banned users."
-        />
+            <StatCard
+              title="Inactive Users"
+              value={stats.inactive}
+              icon={<div className="h-5 w-5 text-amber-600 font-bold">!</div>}
+              valueClassName="text-amber-600"
+              tooltip="Users with unconfirmed emails. For consumers, this excludes banned users."
+            />
 
-        <StatCard
-          title="Disabled Users"
-          value={stats.disabled}
-          icon={<div className="h-5 w-5 text-destructive font-bold">✗</div>}
-          valueClassName="text-destructive"
-          tooltip="Consumers who have been banned from the platform by administrators."
-        />
-      </div>
+            <StatCard
+              title="Disabled Users"
+              value={stats.disabled}
+              icon={<div className="h-5 w-5 text-destructive font-bold">✗</div>}
+              valueClassName="text-destructive"
+              tooltip="Consumers who have been banned from the platform by administrators."
+            />
+          </div>
 
-      {/* Breakdown Stats - Optional additional row for more detail */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard
-          title="Consumers"
-          value={stats.consumer}
-          icon={<Users className="h-5 w-5 text-blue-500" />}
-          tooltip="Regular platform users who can book services and interact with businesses"
-        />
+          {/* Breakdown Stats - Optional additional row for more detail */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard
+              title="Consumers"
+              value={stats.consumer}
+              icon={<Users className="h-5 w-5 text-blue-500" />}
+              tooltip="Regular platform users who can book services and interact with businesses"
+            />
 
-        <StatCard
-          title="Business Users"
-          value={stats.business}
-          icon={<Building2 className="h-5 w-5 text-purple-500" />}
-          tooltip="Users associated with businesses who can manage services, appointments, and business operations"
-        />
+            <StatCard
+              title="Business Users"
+              value={stats.business}
+              icon={<Building2 className="h-5 w-5 text-purple-500" />}
+              tooltip="Users associated with businesses who can manage services, appointments, and business operations"
+            />
 
-        <StatCard
-          title="Influencers"
-          value={stats.influencer}
-          icon={<Sparkles className="h-5 w-5 text-amber-500" />}
-          tooltip="Influencer account users who can participate in marketing campaigns and promotions"
-        />
-      </div>
+            <StatCard
+              title="Influencers"
+              value={stats.influencer}
+              icon={<Sparkles className="h-5 w-5 text-amber-500" />}
+              tooltip="Influencer account users who can participate in marketing campaigns and promotions"
+            />
+          </div>
+        </>
+      )}
 
-      {/* Tabs */}
+      {/* Tabs - Show loading skeleton for table when switching tabs */}
       <Tabs
         value={activeTab}
         onValueChange={(v) => {

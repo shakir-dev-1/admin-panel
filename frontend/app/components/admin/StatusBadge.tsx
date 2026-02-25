@@ -92,8 +92,18 @@ const statusConfig: Record<
     icon: <XCircle className="h-3 w-3" />,
     className: "bg-status-disabled/10 text-status-disabled",
   },
+  cancelled: {
+    label: "Cancelled",
+    icon: <XCircle className="h-3 w-3" />,
+    className: "bg-status-disabled/10 text-status-disabled",
+  },
   processing: {
     label: "Processing",
+    icon: <Clock className="h-3 w-3" />,
+    className: "bg-chart-3/10 text-chart-3",
+  },
+  created: {
+    label: "Created",
     icon: <Clock className="h-3 w-3" />,
     className: "bg-chart-3/10 text-chart-3",
   },

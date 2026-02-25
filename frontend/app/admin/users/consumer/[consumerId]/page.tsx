@@ -19,6 +19,12 @@ import {
   Building2,
   User,
   FileText,
+  CreditCard,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { StatusBadge } from "@/app/components/admin/StatusBadge";
 import { UserTypeBadge } from "@/app/components/admin/UserTypeBadge";
@@ -60,8 +66,9 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api";
-import { safeFormatDate } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useUserById } from "@/hooks/useUsers";
+import { useConsumerPaymentsByUserId } from "@/hooks/usePayments";
 
 interface ApiUser {
   id: string;
@@ -101,10 +108,30 @@ interface ApiUser {
     name: string;
   }>;
   businessClients: Array<{
+    id: string;
+    fullName: string;
+    phoneNumber: string;
+    email: string;
     business: {
       id: string;
       name: string;
     };
+    appointments: Array<{
+      id: string;
+      start: string;
+      end: string;
+      status: string;
+      businessService?: {
+        service: { title: string };
+      };
+      businessPackage?: { title: string };
+      invoice?: {
+        id: string;
+        amountDue: number;
+        amountPaid: number | null;
+        paymentStatus: string;
+      };
+    }>;
   }>;
   reviews: Array<{
     id: string;
@@ -129,6 +156,62 @@ interface ApiUser {
   }>;
 }
 
+// Helper function to format currency
+const formatAmount = (amount: number, currency: string = "USD") => {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
+};
+
+// Appointment status badge component
+const AppointmentStatusBadge = ({ status }: { status: string }) => {
+  const statusConfig: Record<string, { color: string; icon: any }> = {
+    CREATED: { color: "bg-blue-50 text-blue-700 border-blue-200", icon: Clock },
+    CONFIRMED: {
+      color: "bg-purple-50 text-purple-700 border-purple-200",
+      icon: CheckCircle2,
+    },
+    CHECKED_IN: {
+      color: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      icon: UserCheck,
+    },
+    CHECKED_OUT: {
+      color: "bg-gray-50 text-gray-700 border-gray-200",
+      icon: UserX,
+    },
+    CANCELLED: {
+      color: "bg-red-50 text-red-700 border-red-200",
+      icon: XCircle,
+    },
+    COMPLETED: {
+      color: "bg-green-50 text-green-700 border-green-200",
+      icon: CheckCircle2,
+    },
+    NO_SHOW: {
+      color: "bg-orange-50 text-orange-700 border-orange-200",
+      icon: AlertCircle,
+    },
+  };
+
+  const config = statusConfig[status] || {
+    color: "bg-gray-50 text-gray-700 border-gray-200",
+    icon: Clock,
+  };
+  const Icon = config.icon;
+
+  return (
+    <Badge
+      variant="outline"
+      className={`${config.color} flex items-center gap-1`}
+    >
+      <Icon className="h-3 w-3" />
+      {status}
+    </Badge>
+  );
+};
+
 export default function UserDetail() {
   const params = useParams();
   const userId = params?.consumerId as string;
@@ -136,6 +219,17 @@ export default function UserDetail() {
   const { token } = useAuth();
 
   const { data: user, isLoading, error, refetch } = useUserById(userId);
+
+  const {
+    payments: consumerPayments,
+    loading: paymentsLoading,
+    error: paymentsError,
+    hasMore: hasMorePayments,
+    loadMore: loadMorePayments,
+    totalSpent,
+    totalRefunded,
+    completedCount,
+  } = useConsumerPaymentsByUserId(userId, { limit: 20 });
 
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -145,7 +239,28 @@ export default function UserDetail() {
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
 
-  const { resetPassword, changeEmail, changePhone, changeStatus } = useUsersManagement();
+  const { resetPassword, changeEmail, changePhone, changeStatus } =
+    useUsersManagement();
+
+  // Flatten all appointments from all business clients
+  const allAppointments =
+    user?.businessClients
+      ?.flatMap(
+        (client) =>
+          client.appointments?.map((apt) => ({
+            ...apt,
+            clientName: client.fullName,
+            businessName: client.business.name,
+            businessId: client.business.id,
+            serviceName:
+              apt.businessService?.service?.title ||
+              apt.businessPackage?.title ||
+              "Service",
+          })) || [],
+      )
+      .sort(
+        (a, b) => new Date(b.start).getTime() - new Date(a.start).getTime(),
+      ) || [];
 
   if (isLoading) {
     return (
@@ -190,9 +305,6 @@ export default function UserDetail() {
 
       toast.success("Email changed from " + user.email + " to " + newEmail);
 
-      // Refetch to get updated data (cache will be invalidated by the hook)
-      // refetch();
-
       setShowEmailDialog(false);
       setNewEmail("");
     } catch (error) {
@@ -210,9 +322,6 @@ export default function UserDetail() {
       toast.success(
         "Phone changed from " + user.phoneNumber + " to " + newPhone,
       );
-
-      // Refetch to get updated data (cache will be invalidated by the hook)
-      // refetch();
 
       setShowPhoneDialog(false);
       setNewPhone("");
@@ -232,9 +341,6 @@ export default function UserDetail() {
         `Account ${newStatus ? "banned" : "unbanned"} for ${user.name}`,
       );
 
-      // Refetch to get updated data (cache will be invalidated by the hook)
-      // refetch();
-
       setShowStatusDialog(false);
     } catch (error) {
       toast.error("Failed to update account status");
@@ -246,8 +352,6 @@ export default function UserDetail() {
     if (user.isBanned) return "BANNED";
     return "ACTIVE";
   };
-
-  // console.log("User: ", user);
 
   return (
     <>
@@ -292,11 +396,12 @@ export default function UserDetail() {
           onValueChange={setActiveTab}
           className="space-y-6"
         >
-          <TabsList>
+          <TabsList className="grid grid-cols-5 ">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="appointments">Appointments</TabsTrigger>
+            <TabsTrigger value="payments">Payments</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -417,6 +522,37 @@ export default function UserDetail() {
                     )}
                   </Button>
                 </div>
+
+                {/* Quick Stats */}
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="text-sm font-medium mb-3">Quick Stats</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Total Appointments
+                      </span>
+                      <Badge variant="secondary">
+                        {allAppointments.length}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Total Spent
+                      </span>
+                      <Badge variant="secondary">
+                        {formatAmount(totalSpent)}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Businesses Visited
+                      </span>
+                      <Badge variant="secondary">
+                        {user.businessClients?.length || 0}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -425,34 +561,27 @@ export default function UserDetail() {
               <div className="admin-card">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="text-lg font-semibold">
-                    Associated Businesses
-                  </h2>
+                  <h2 className="text-lg font-semibold">Businesses Visited</h2>
+                  <Badge variant="outline">{user.businessClients.length}</Badge>
                 </div>
-                {/* <div className="mt-4 grid gap-3">
-                  {user.businessClients.map((client, index) => (                    
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {user.businessClients.map((client) => (
                     <div
                       key={client.business.id}
-                      className="flex items-center justify-between rounded-lg border p-3"
-                    >                      
-                      <div>
-                        <p className="font-medium">{client.business.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Business ID: {client.business.id}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          router.push(`/admin/business/${client.business.id}`)
-                        }
-                      >
-                        View Business
-                      </Button>
+                      className="rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                      // onClick={() =>
+                      //   router.push(`/admin/businesses/${client.business.id}`)
+                      // }
+                    >
+                      <p className="font-medium truncate">
+                        {client.business.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {client.appointments?.length || 0} appointments
+                      </p>
                     </div>
                   ))}
-                </div> */}
+                </div>
               </div>
             )}
 
@@ -468,17 +597,289 @@ export default function UserDetail() {
                   {user.favorites.map((favorite) => (
                     <div
                       key={favorite.id}
-                      className="rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                      className="rounded-lg border p-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() =>
+                        router.push(`/admin/businesses/${favorite.id}`)
+                      }
                     >
                       <p className="font-medium truncate">{favorite.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        ID: {favorite.id}
-                      </p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          {/* Appointments Tab */}
+          <TabsContent value="appointments" className="space-y-6">
+            <div className="admin-card">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="text-lg font-semibold">Appointment History</h2>
+                  <Badge variant="outline">
+                    {allAppointments.length} total
+                  </Badge>
+                </div>
+              </div>
+
+              {allAppointments.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">No appointments found</p>
+                  <p className="text-sm mt-1">
+                    This user hasn&apos;t booked any appointments yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {allAppointments.map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="rounded-lg border p-4 hover:shadow-sm transition-shadow"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">
+                              {appointment.businessName}
+                            </span>
+                            <AppointmentStatusBadge
+                              status={appointment.status}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-xs text-muted-foreground">
+                                Service
+                              </p>
+                              <p className="font-medium">
+                                {appointment.serviceName}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">
+                                Date & Time
+                              </p>
+                              <p className="font-medium">
+                                {format(
+                                  new Date(appointment.start),
+                                  "MMM d, yyyy",
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(appointment.start), "h:mm a")}{" "}
+                                - {format(new Date(appointment.end), "h:mm a")}
+                              </p>
+                            </div>
+                            {appointment.invoice && (
+                              <>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Amount
+                                  </p>
+                                  <p className="font-semibold">
+                                    {formatAmount(
+                                      appointment.invoice.amountDue,
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Payment
+                                  </p>
+                                  <StatusBadge
+                                    status={appointment.invoice.paymentStatus}
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            router.push(
+                              `/admin/businesses/${appointment.businessId}/appointments/${appointment.id}`,
+                            )
+                          }
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Payments Tab */}
+          <TabsContent value="payments" className="space-y-6">
+            <div className="admin-card">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="text-lg font-semibold">Payment History</h2>
+                  <Badge variant="outline">
+                    {consumerPayments.length} payments
+                  </Badge>
+                </div>
+              </div>
+
+              {paymentsLoading && consumerPayments.length === 0 ? (
+                <div className="flex min-h-[200px] items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : paymentsError ? (
+                <div className="flex items-center justify-center min-h-[200px] text-red-500">
+                  Error loading payments: {paymentsError}
+                </div>
+              ) : consumerPayments.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <CreditCard className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">
+                    No payment history found
+                  </p>
+                  <p className="text-sm mt-1">
+                    This user hasn&apos;t made any payments yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Total Spent
+                      </p>
+                      <p className="text-xl font-bold mt-1">
+                        {formatAmount(totalSpent)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Completed Payments
+                      </p>
+                      <p className="text-xl font-bold mt-1 text-green-600">
+                        {completedCount}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Total Refunded
+                      </p>
+                      <p className="text-xl font-bold mt-1 text-orange-600">
+                        {formatAmount(totalRefunded)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Payments List */}
+                  <div className="space-y-3">
+                    {consumerPayments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="rounded-lg border p-4 hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">
+                                {payment.businessName}
+                              </span>
+                              <StatusBadge status={payment.status} />
+                              {payment.paymentStatus && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-blue-50 text-blue-700"
+                                >
+                                  {payment.paymentStatus}
+                                </Badge>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Service
+                                </p>
+                                <p className="font-medium">
+                                  {payment.serviceName ||
+                                    payment.packageName ||
+                                    "—"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Amount
+                                </p>
+                                <p className="font-semibold">
+                                  {formatAmount(payment.amount)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Date
+                                </p>
+                                <p className="font-medium">
+                                  {format(
+                                    new Date(payment.createdAt),
+                                    "MMM d, yyyy",
+                                  )}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  Transaction ID
+                                </p>
+                                <p className="font-mono text-xs">
+                                  {payment.id}
+                                </p>
+                              </div>
+                            </div>
+
+                            {payment.refundAmount > 0 && (
+                              <div className="mt-2 flex items-center gap-2 text-sm text-orange-600">
+                                <AlertCircle className="h-4 w-4" />
+                                <span>
+                                  Refunded: {formatAmount(payment.refundAmount)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Load More Button */}
+                  {hasMorePayments && (
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => loadMorePayments()}
+                        disabled={paymentsLoading}
+                      >
+                        {paymentsLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load More Payments"
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Activity Tab */}
@@ -593,7 +994,7 @@ export default function UserDetail() {
             <div className="admin-card">
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold">Recent Reviews</h2>
+                <h2 className="text-lg font-semibold">Reviews</h2>
                 <Badge variant="secondary">{user.reviews.length} reviews</Badge>
               </div>
               <div className="mt-4 space-y-4">
@@ -626,12 +1027,9 @@ export default function UserDetail() {
                           <p className="text-sm text-muted-foreground mb-2">
                             For{" "}
                             <span className="font-medium">
-                              {review.business
-                                ? review.business.name
-                                : "Unknown Business"}
+                              {review.business?.name || "Unknown Business"}
                             </span>
                           </p>
-                          <p className="text-sm">{review.createdAt}</p>
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {safeFormatDate(review.createdAt, "MMM d, yyyy")}
@@ -640,131 +1038,6 @@ export default function UserDetail() {
                     </div>
                   ))
                 )}
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Security Tab */}
-          <TabsContent value="security" className="space-y-6">
-            <div className="admin-card">
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold">Security & Settings</h2>
-              </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Mail className="h-4 w-4" />
-                    <span className="font-medium">Email Verification</span>
-                  </div>
-                  <Badge
-                    variant={user.isEmailConfirmed ? "default" : "secondary"}
-                  >
-                    {user.isEmailConfirmed ? "Verified" : "Pending"}
-                  </Badge>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Phone className="h-4 w-4" />
-                    <span className="font-medium">Phone Verification</span>
-                  </div>
-                  <Badge
-                    variant={user.isPhoneConfirmed ? "default" : "secondary"}
-                  >
-                    {user.isPhoneConfirmed ? "Verified" : "Pending"}
-                  </Badge>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Shield className="h-4 w-4" />
-                    <span className="font-medium">Two-Factor Auth</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={user.twoFactorEnabled ? "default" : "secondary"}
-                    >
-                      {user.twoFactorEnabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                    {user.twoFactorType && (
-                      <span className="text-sm text-muted-foreground">
-                        ({user.twoFactorType})
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="h-4 w-4" />
-                    <span className="font-medium">Agreements</span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">User Agreement</span>
-                      <Badge
-                        variant={
-                          user.isAgreementAccepted ? "default" : "secondary"
-                        }
-                      >
-                        {user.isAgreementAccepted ? "Accepted" : "Pending"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Privacy Policy</span>
-                      <Badge
-                        variant={
-                          user.hasAcceptedPolicy ? "default" : "secondary"
-                        }
-                      >
-                        {user.hasAcceptedPolicy ? "Accepted" : "Pending"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <User className="h-4 w-4" />
-                    <span className="font-medium">Onboarding</span>
-                  </div>
-                  <Badge
-                    variant={user.onboardingCompleted ? "default" : "secondary"}
-                  >
-                    {user.onboardingCompleted ? "Completed" : "Incomplete"}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            {/* Account Status */}
-            <div className="admin-card">
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold">Account Status</h2>
-              </div>
-              <div className="mt-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-muted-foreground">
-                      Account Status
-                    </p>
-                    <div className="mt-2">
-                      <StatusBadge status={getUserStatus()} />
-                    </div>
-                    {user.banDate && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Banned on:{" "}
-                        {safeFormatDate(user.banDate, "MMM d, yyyy HH:mm")}
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-muted-foreground">
-                      Last Updated
-                    </p>
-                    <p className="mt-2 font-medium">
-                      {safeFormatDate(user.updatedAt, "MMM d, yyyy HH:mm")}
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
           </TabsContent>
@@ -812,8 +1085,7 @@ export default function UserDetail() {
           <DialogHeader>
             <DialogTitle>Change Phone Number</DialogTitle>
             <DialogDescription>
-              Update the phone number for {user.name}. This will require the
-              user to verify their new phone number.
+              Update the phone number for {user.name}.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">

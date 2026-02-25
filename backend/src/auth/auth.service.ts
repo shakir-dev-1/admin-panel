@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -68,7 +69,7 @@ export class AuthService {
     return {
       accessToken: this.jwtService.sign(payload, {
         secret: process.env.ADMIN_JWT_SECRET,
-        expiresIn: '24h',
+        expiresIn: (process.env.ADMIN_JWT_SECRET_EXPIRES_IN as any) || '8h',
       }),
       admin: {
         // Add admin info to response

@@ -77,7 +77,6 @@ export class AuditService {
             mode: Prisma.QueryMode.insensitive,
           },
         },
-        // Also search in targetUserId if it's a string
         {
           targetUserId: {
             contains: search,
@@ -130,7 +129,107 @@ export class AuditService {
       take: limit,
     });
 
-    // Format the response - just return targetUserId directly without fetching user info
+    // Fetch user data for all targetUserId in parallel
+    const targetUserIds = logs
+      .map((log) => log.targetUserId)
+      .filter((id): id is string => id !== null);
+
+    // Create a map to store user data
+    const userDataMap = new Map<
+      string,
+      { id: string; name: string; email: string; type: string }
+    >();
+
+    if (targetUserIds.length > 0) {
+      // Fetch from all user tables in parallel
+      const [users, businessUsers, influencers, admins] = await Promise.all([
+        // Regular users
+        this.prisma.user.findMany({
+          where: { id: { in: targetUserIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        }),
+        // Business users
+        this.prisma.businessUser.findMany({
+          where: { id: { in: targetUserIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            fullName: true,
+            email: true,
+          },
+        }),
+        // Influencers
+        this.prisma.influencer.findMany({
+          where: { id: { in: targetUserIds } },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        }),
+        // Admins (if they can be target users)
+        this.prisma.admin.findMany({
+          where: { id: { in: targetUserIds } },
+          select: {
+            id: true,
+            email: true,
+          },
+        }),
+      ]);
+
+      // Add regular users to map
+      users.forEach((user) => {
+        userDataMap.set(user.id, {
+          id: user.id,
+          name:
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            'Unknown',
+          email: user.email,
+          type: 'user',
+        });
+      });
+
+      // Add business users to map
+      businessUsers.forEach((user) => {
+        userDataMap.set(user.id, {
+          id: user.id,
+          name:
+            user.fullName ||
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            'Unknown',
+          email: user.email,
+          type: 'business',
+        });
+      });
+
+      // Add influencers to map
+      influencers.forEach((influencer) => {
+        userDataMap.set(influencer.id, {
+          id: influencer.id,
+          name: influencer.name,
+          email: influencer.email,
+          type: 'influencer',
+        });
+      });
+
+      // Add admins to map
+      admins.forEach((admin) => {
+        userDataMap.set(admin.id, {
+          id: admin.id,
+          name: 'Admin',
+          email: admin.email,
+          type: 'admin',
+        });
+      });
+    }
+
+    // Format the response with user data
     const formattedLogs = logs.map((log) => ({
       id: log.id,
       actionType: log.actionType,
@@ -141,7 +240,17 @@ export class AuditService {
             email: log.admin.email,
           }
         : null,
-      targetUser: log.targetUserId ? { id: log.targetUserId } : null, // Just return the ID
+      targetUser:
+        log.targetUserId && userDataMap.has(log.targetUserId)
+          ? userDataMap.get(log.targetUserId)
+          : log.targetUserId
+            ? {
+                id: log.targetUserId,
+                name: 'Unknown',
+                email: 'Unknown',
+                type: 'unknown',
+              }
+            : null,
       metadata: log.metadata,
     }));
 
@@ -175,7 +284,7 @@ export class AuditService {
           },
         }),
 
-        // Top 5 action types - with proper typing
+        // Top 5 action types
         this.prisma.adminAuditLog.groupBy({
           by: ['actionType'],
           _count: {
@@ -189,7 +298,7 @@ export class AuditService {
           take: 5,
         }),
 
-        // Top 5 admins by actions - with proper typing
+        // Top 5 admins by actions
         this.prisma.adminAuditLog.groupBy({
           by: ['adminId'],
           _count: {
@@ -209,7 +318,7 @@ export class AuditService {
         }),
       ]);
 
-    // Enrich admin data with proper typing
+    // Enrich admin data
     const enrichedTopAdmins = await Promise.all(
       topAdmins
         .filter(
@@ -219,11 +328,15 @@ export class AuditService {
         .map(async (admin) => {
           const adminData = await this.prisma.admin.findUnique({
             where: { id: admin.adminId },
-            select: { email: true },
+            select: {
+              email: true,
+              // If admin has name fields, add them here
+            },
           });
           return {
             adminId: admin.adminId,
             adminEmail: adminData?.email || 'Unknown',
+            adminName: 'Admin', // You can customize this if admins have names
             count: admin._count.id,
           };
         }),

@@ -147,7 +147,7 @@ export class AuthAuditInterceptor implements NestInterceptor {
             data: {
               adminId, // Will be null for failed, actual ID for success
               actionType: 'ADMIN_LOGIN',
-              targetUserId: responseEmail || email, // Use email from response if available, otherwise from request
+              targetUserId: adminId || responseEmail || email, // Use email from response if available, otherwise from request
               metadata: toPrismaJson(metadata),
             },
           });

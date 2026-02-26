@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment, useEffect, useRef } from "react";
 import {
   useAuditLogs,
   useAuditSummary,
@@ -32,6 +32,15 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 import { formatDistanceToNow } from "date-fns";
+import { Input } from "@/app/components/ui/input";
+import { Button } from "@/app/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -295,7 +304,7 @@ export default function AuditLog() {
     page: 1,
     limit: 20,
   });
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [localFilters, setLocalFilters] = useState({
@@ -305,41 +314,61 @@ export default function AuditLog() {
     endDate: "",
   });
 
+  // Add a ref to track initial mount
+  const isInitialMount = useRef(true);
+
   const { data, isLoading, isFetching, refetch } = useAuditLogs(filters);
   const { data: summary, isLoading: summaryLoading } = useAuditSummary();
-  // console.log(data);
+
   const activeFilterCount = useMemo(
-    () => Object.values(localFilters).filter(Boolean).length + (search ? 1 : 0),
-    [localFilters, search],
+    () =>
+      Object.values(localFilters).filter(Boolean).length +
+      (filters.search ? 1 : 0),
+    [localFilters, filters.search],
   );
 
-  function applySearch() {
-    setFilters((f) => ({ ...f, page: 1, search: search || undefined }));
-  }
-
-  function applyFilters() {
+  // Apply search when user types and hits Enter or clicks search button
+  const handleSearch = () => {
     setFilters((f) => ({
       ...f,
       page: 1,
-      search: search || undefined,
+      search: searchInput || undefined,
+    }));
+  };
+
+  // Handle Enter key in search input
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  // Apply all filters
+  const applyFilters = () => {
+    setFilters((f) => ({
+      ...f,
+      page: 1,
+      search: searchInput || undefined,
       actionType: localFilters.actionType || undefined,
       adminId: localFilters.adminId || undefined,
       startDate: localFilters.startDate || undefined,
       endDate: localFilters.endDate || undefined,
     }));
     setShowFilters(false);
-  }
+  };
 
-  function clearAll() {
-    setSearch("");
+  // Clear all filters
+  const clearAll = () => {
+    const defaultFilters = { page: 1, limit: 20 };
+    setSearchInput("");
     setLocalFilters({
       actionType: "",
       adminId: "",
       startDate: "",
       endDate: "",
     });
-    setFilters({ page: 1, limit: 20 });
-  }
+    setFilters(defaultFilters);
+  };
 
   const logs = data?.data ?? [];
   const pagination = data?.pagination;
@@ -413,74 +442,79 @@ export default function AuditLog() {
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="Search…"
-                  className="h-9 w-52 rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-9 w-52 pl-8 pr-3"
                 />
               </div>
 
               {/* Filter toggle */}
-              <button
+              <Button
+                variant={showFilters ? "default" : "outline"}
+                size="sm"
                 onClick={() => setShowFilters((v) => !v)}
-                className={`relative inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm transition-colors
-                  ${
-                    showFilters
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-input bg-background text-muted-foreground hover:text-foreground"
-                  }`}
+                className="relative"
               >
-                <ListFilter className="h-3.5 w-3.5" />
+                <ListFilter className="h-3.5 w-3.5 mr-1.5" />
                 Filter
                 {activeFilterCount > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
                     {activeFilterCount}
                   </span>
                 )}
-              </button>
+              </Button>
 
               {activeFilterCount > 0 && (
-                <button
-                  onClick={clearAll}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
+                <Button variant="outline" size="sm" onClick={clearAll}>
+                  <X className="h-3.5 w-3.5 mr-1.5" />
                   Clear
-                </button>
+                </Button>
               )}
 
               {/* Refresh */}
-              <button
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={() => refetch()}
                 disabled={isFetching}
                 title="Refresh logs"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="h-9 w-9"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
                 />
-              </button>
+              </Button>
 
               {/* Per-page */}
-              <select
-                value={filters.limit}
-                onChange={(e) =>
+              <Select
+                value={String(filters.limit)}
+                onValueChange={(value) =>
                   setFilters((f) => ({
                     ...f,
-                    limit: Number(e.target.value),
+                    limit: Number(value),
                     page: 1,
                   }))
                 }
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                {[10, 20, 50, 100].map((n) => (
-                  <option key={n} value={n}>
-                    {n} / page
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-[100px] h-9">
+                  <SelectValue placeholder="20 / page" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Search button */}
+              <Button size="sm" onClick={handleSearch}>
+                Search
+              </Button>
             </div>
           </div>
 
@@ -492,7 +526,7 @@ export default function AuditLog() {
                   {
                     label: "Action Type",
                     key: "actionType",
-                    placeholder: "e.g. GET /admin/users",
+                    placeholder: "e.g. PASSWORD_RESET",
                     type: "text",
                   },
                   {
@@ -518,7 +552,7 @@ export default function AuditLog() {
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                       {label}
                     </label>
-                    <input
+                    <Input
                       type={type}
                       value={localFilters[key as keyof typeof localFilters]}
                       onChange={(e) =>
@@ -528,24 +562,16 @@ export default function AuditLog() {
                         }))
                       }
                       placeholder={placeholder}
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
+                      className="w-full"
                     />
                   </div>
                 ))}
               </div>
               <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowFilters(false)}
-                  className="h-9 rounded-md border border-input bg-background px-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
+                <Button variant="outline" onClick={() => setShowFilters(false)}>
                   Cancel
-                </button>
-                <button
-                  onClick={applyFilters}
-                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Apply Filters
-                </button>
+                </Button>
+                <Button onClick={applyFilters}>Apply Filters</Button>
               </div>
             </div>
           )}
@@ -559,6 +585,7 @@ export default function AuditLog() {
                   {[
                     "Method",
                     "Action / Target",
+                    "Admin",
                     "Status",
                     "Duration",
                     "Time",
@@ -638,14 +665,6 @@ export default function AuditLog() {
                                   </span>
                                 </p>
                               )}
-                              {log.admin && (
-                                <p className="flex items-center gap-1 text-xs text-muted-foreground pl-4">
-                                  <span className="text-[10px]">by</span>
-                                  <span className="truncate">
-                                    {log.admin.email}
-                                  </span>
-                                </p>
-                              )}
                             </div>
                           </td>
 
@@ -712,46 +731,61 @@ export default function AuditLog() {
           </span>
 
           <div className="flex items-center gap-1">
-            <button
+            <Button
+              variant="outline"
+              size="icon"
               disabled={pagination.page <= 1}
               onClick={() =>
                 setFilters((f) => ({ ...f, page: (f.page ?? 1) - 1 }))
               }
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="h-8 w-8"
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
+            </Button>
 
             {Array.from(
-              { length: Math.min(pagination.totalPages, 7) },
+              { length: Math.min(pagination.totalPages, 5) },
               (_, i) => {
-                const p = i + 1;
+                let pageNum = i + 1;
+                // Show pages around current page
+                if (pagination.totalPages > 5) {
+                  const half = Math.floor(5 / 2);
+                  let start = Math.max(1, pagination.page - half);
+                  const end = Math.min(pagination.totalPages, start + 5 - 1);
+                  if (end - start + 1 < 5) {
+                    start = Math.max(1, end - 5 + 1);
+                  }
+                  pageNum = start + i;
+                  if (pageNum > pagination.totalPages) return null;
+                }
+
                 return (
-                  <button
-                    key={p}
-                    onClick={() => setFilters((f) => ({ ...f, page: p }))}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md border text-sm transition-colors
-                      ${
-                        p === pagination.page
-                          ? "border-primary bg-primary text-primary-foreground font-medium"
-                          : "border-input bg-background text-muted-foreground hover:text-foreground"
-                      }`}
+                  <Button
+                    key={pageNum}
+                    variant={
+                      pageNum === pagination.page ? "default" : "outline"
+                    }
+                    size="icon"
+                    onClick={() => setFilters((f) => ({ ...f, page: pageNum }))}
+                    className="h-8 w-8"
                   >
-                    {p}
-                  </button>
+                    {pageNum}
+                  </Button>
                 );
               },
             )}
 
-            <button
+            <Button
+              variant="outline"
+              size="icon"
               disabled={pagination.page >= pagination.totalPages}
               onClick={() =>
                 setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))
               }
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="h-8 w-8"
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
       )}

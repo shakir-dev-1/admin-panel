@@ -242,6 +242,11 @@ export default function UserDetail() {
   const { resetPassword, changeEmail, changePhone, changeStatus } =
     useUsersManagement();
 
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+
   // Flatten all appointments from all business clients
   const allAppointments =
     user?.businessClients
@@ -286,14 +291,31 @@ export default function UserDetail() {
   }
 
   const handleResetPassword = async () => {
-    try {
-      if (!token) return;
-      await resetPassword(user.id);
+    if (!token) return;
 
-      toast.success("Password reset email sent to " + user.email);
+    // Validate passwords
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      await resetPassword(user.id, newPassword, false);
+      toast.success(`Password successfully reset for ${user.email}`);
+      setShowResetPasswordDialog(false);
+      setNewPassword("");
+      setConfirmPassword("");
     } catch (error) {
       toast.error("Failed to reset password");
       console.error("Password reset error:", error);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -477,7 +499,7 @@ export default function UserDetail() {
                   <Button
                     variant="outline"
                     className="w-full justify-start"
-                    onClick={handleResetPassword}
+                    onClick={() => setShowResetPasswordDialog(true)}
                   >
                     <Key className="mr-2 h-4 w-4" />
                     Reset Password
@@ -1043,6 +1065,74 @@ export default function UserDetail() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Password Reset Dialog */}
+      <Dialog
+        open={showResetPasswordDialog}
+        onOpenChange={setShowResetPasswordDialog}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {user.name} ({user.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                // type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="mt-2"
+                placeholder="Enter new password"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Password must be at least 6 characters long
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <Input
+                id="confirm-password"
+                // type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="mt-2"
+                placeholder="Confirm new password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowResetPasswordDialog(false);
+                setNewPassword("");
+                setConfirmPassword("");
+              }}
+              disabled={isResetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={!newPassword || !confirmPassword || isResetting}
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                "Reset Password"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Email Dialog */}
       <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>

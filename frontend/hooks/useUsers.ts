@@ -676,7 +676,11 @@ export function useUsersManagement() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
 
-  const resetPassword = async (userId: string, isBusinessUser = false) => {
+  const resetPassword = async (
+    userId: string,
+    password: string,
+    isBusinessUser = false,
+  ) => {
     if (!token) throw new Error("No authentication token");
 
     const endpoint = isBusinessUser
@@ -685,6 +689,10 @@ export function useUsersManagement() {
 
     const response = await fetchWithAuth(endpoint, token, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
     });
 
     // Invalidate relevant caches
@@ -693,8 +701,14 @@ export function useUsersManagement() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.paginated.business(),
       });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.users.businessUser(userId),
+      });
     } else {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.consumers() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.users.consumer(userId),
+      });
     }
 
     return response;
@@ -796,7 +810,10 @@ export function useUsersManagement() {
     return response;
   };
 
-  const resetInfluencerPassword = async (influencerId: string) => {
+  const resetInfluencerPassword = async (
+    influencerId: string,
+    password: string,
+  ) => {
     if (!token) throw new Error("No authentication token");
 
     const response = await fetchWithAuth(
@@ -804,6 +821,10 @@ export function useUsersManagement() {
       token,
       {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password }),
       },
     );
 

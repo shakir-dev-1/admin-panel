@@ -2,6 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { AuditInterceptor } from './audit/audit.interceptor.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
+// import { Logger } from '@nestjs/common';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 async function bootstrap() {
   // Cast to NestExpressApplication to access Express-specific methods
@@ -26,6 +30,13 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api');
+
+  // console.log('Allowed CORS origins:', allowedOrigins);
+
+  // const thisLogger = new Logger('Main');
+  // thisLogger.log('Starting application...');
+  // thisLogger.log('Allowed CORS origins:', allowedOrigins);
+  // thisLogger.log('Environment:', process.env.NODE_ENV);
 
   // Interceptors should usually come AFTER CORS/Prefix setup
   const auditInterceptor = app.get(AuditInterceptor);

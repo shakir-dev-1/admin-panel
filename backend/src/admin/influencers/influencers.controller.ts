@@ -116,8 +116,14 @@ export class InfluencersController {
    */
   @Post(':influencerId/reset-password')
   @Audit('PASSWORD_RESET')
-  async resetPassword(@Param('influencerId') influencerId: string) {
-    return this.influencersService.forcePasswordReset(influencerId);
+  async resetPassword(
+    @Param('influencerId') influencerId: string,
+    @Body('password') password: string,
+  ) {
+    return this.influencersService.resetInfluencerUserPassword(
+      influencerId,
+      password,
+    );
   }
 
   /**

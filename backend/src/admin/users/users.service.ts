@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // src/admin/admin.service.ts
 import {
@@ -10,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 // import { AdminUserSearchDto } from './dto/admin-user-search.dto.js';
 import * as crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export type UserSortField =
   | 'firstName'
@@ -448,35 +450,46 @@ export class UsersService {
     };
   }
 
-  // Force password reset for regular user
-  async forcePasswordReset(userId: string) {
-    // Check if user exists
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+  async resetUserPasswordSimple(
+    userId: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if user exists
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
 
-    if (!user) {
-      throw new NotFoundException('User not found');
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      // Basic password check
+      if (!newPassword || newPassword.length < 6) {
+        throw new BadRequestException(
+          'Password must be at least 6 characters long',
+        );
+      }
+
+      // Hash the new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update user password
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      });
+
+      return {
+        success: true,
+        message: 'Password successfully reset',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to reset password for user ${userId}: ${error.message}`,
+      );
+      throw error;
     }
-
-    // Generate reset token (you might want to implement a PasswordResetToken model)
-    const rawToken = crypto.randomBytes(32).toString('hex');
-
-    // Note: You need to create a PasswordResetToken model or use your existing method
-    // await this.prisma.passwordResetToken.create({
-    //   data: {
-    //     userId,
-    //     tokenHash,
-    //     expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour
-    //   },
-    // });
-
-    // await this.logAudit(adminId, 'RESET_PASSWORD', userId, {
-    //   action: 'password_reset_forced',
-    // });
-
-    // IMPORTANT: Send rawToken via email/SMS
-    return { success: true, token: rawToken }; // In production, don't return token, send via email
   }
 
   // Change email for regular user

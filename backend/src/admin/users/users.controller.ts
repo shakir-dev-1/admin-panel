@@ -80,12 +80,15 @@ export class UsersController {
   }
 
   /**
-   * Force password reset for a user
+   * Password reset for a user
    */
   @Post(':userId/reset-password')
   @Audit('PASSWORD_RESET')
-  async resetPassword(@Param('userId') userId: string) {
-    return this.usersService.forcePasswordReset(userId);
+  async resetUserPasswordSimple(
+    @Param('userId') userId: string,
+    @Body('password') password: string, // Fixed: extract password from body
+  ) {
+    return this.usersService.resetUserPasswordSimple(userId, password);
   }
 
   /**

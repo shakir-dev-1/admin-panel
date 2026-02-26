@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // src/admin/influencers.service.ts
 import {
@@ -9,6 +10,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CampaignOfferStatus, Prisma } from '../../generated/prisma/client.js';
 import * as crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export type InfluencerSortField =
   | 'name'
@@ -453,30 +455,48 @@ export class InfluencersService {
     };
   }
 
-  // Force password reset for influencer
-  async forcePasswordReset(influencerId: string) {
-    // Check if influencer exists
-    const influencer = await this.prisma.influencer.findUnique({
-      where: { id: influencerId },
-    });
+  async resetInfluencerUserPassword(
+    influencerId: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if user exists
+      const user = await this.prisma.influencer.findUnique({
+        where: { id: influencerId },
+      });
 
-    if (!influencer) {
-      throw new NotFoundException('Influencer not found');
+      if (!user) {
+        throw new NotFoundException(
+          `Influencer with ID ${influencerId} not found`,
+        );
+      }
+
+      // Basic password check
+      if (!newPassword || newPassword.length < 6) {
+        throw new BadRequestException(
+          'Password must be at least 6 characters long',
+        );
+      }
+
+      // Hash the new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update user password
+      await this.prisma.influencer.update({
+        where: { id: influencerId },
+        data: { password: hashedPassword },
+      });
+
+      return {
+        success: true,
+        message: 'Password successfully reset',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to reset password for influencer ${influencerId}: ${error.message}`,
+      );
+      throw error;
     }
-
-    // Generate reset token
-    const rawToken = crypto.randomBytes(32).toString('hex');
-
-    // Note: You need to implement password reset logic for influencers
-    // This would involve creating a PasswordResetToken model for influencers
-    // or using your existing password reset mechanism
-
-    // await this.logAudit(adminId, 'RESET_PASSWORD_INFLUENCER', influencerId, {
-    //   action: 'password_reset_forced',
-    // });
-
-    // IMPORTANT: Send rawToken via email
-    return { success: true, token: rawToken }; // In production, don't return token, send via email
   }
 
   // Change email for influencer

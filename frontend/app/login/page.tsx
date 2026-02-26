@@ -205,8 +205,8 @@ export default function AdminLoginPage() {
       trackFailedAttempt();
 
       // Enhanced error messages
-      let errorMessage = "Invalid email or password";
-      let errorDescription = "Please check your credentials and try again.";
+      let errorMessage;// = "Invalid email or password";
+      let errorDescription;// = "Please check your credentials and try again.";
 
       if (err.message === "Request timeout. Please try again.") {
         errorMessage = "Connection Timeout";

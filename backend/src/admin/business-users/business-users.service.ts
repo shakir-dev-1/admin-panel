@@ -22,7 +22,8 @@ import {
   PaymentStatus,
 } from '../../generated/prisma/client.js';
 // import { jest } from '@jest/globals'; // Add this if you use jest.fn() inside the service itself
-import * as crypto from 'crypto';
+// import * as crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export type BusinessUserSortField =
   | 'email'
@@ -1184,19 +1185,46 @@ export class BusinessUsersService {
     }
   }
 
-  // Force password reset for business user
-  async forceBusinessUserPasswordReset(businessUserId: string) {
-    const businessUser = await this.prisma.businessUser.findUnique({
-      where: { id: businessUserId },
-    });
+  async resetBusinessUserPassword(
+    userId: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if user exists
+      const user = await this.prisma.businessUser.findUnique({
+        where: { id: userId },
+      });
 
-    if (!businessUser) {
-      throw new NotFoundException('Business user not found');
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      // Basic password check
+      if (!newPassword || newPassword.length < 6) {
+        throw new BadRequestException(
+          'Password must be at least 6 characters long',
+        );
+      }
+
+      // Hash the new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update user password
+      await this.prisma.businessUser.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      });
+
+      return {
+        success: true,
+        message: 'Password successfully reset',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to reset password for user ${userId}: ${error.message}`,
+      );
+      throw error;
     }
-
-    const rawToken = crypto.randomBytes(32).toString('hex');
-
-    return { success: true, token: rawToken }; // In production, send via email
   }
 
   // Change email for business user

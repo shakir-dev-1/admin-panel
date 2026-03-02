@@ -24,7 +24,6 @@ Admin Panel is a separate platform for managing administrative workflows on top 
 
 ## 📁 Project Structure
 
-```
 NestJS backend
 NextJS frontend
 

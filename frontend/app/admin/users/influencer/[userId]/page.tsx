@@ -65,6 +65,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api";
 import { safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useInfluencerById } from "@/hooks/useUsers";
+import { ChangePhoneDialog } from "@/app/components/admin/ChangePhoneDialog";
 
 interface ApiInfluencer {
   id: string;
@@ -135,7 +136,7 @@ export default function InfluencerDetail() {
     data: influencer,
     isLoading,
     error,
-    // refetch,
+    refetch,
   } = useInfluencerById(influencerId);
 
   const { token } = useAuth();
@@ -229,25 +230,6 @@ export default function InfluencerDetail() {
     } catch (error) {
       toast.error("Failed to change email");
       console.error("Email change error:", error);
-    }
-  };
-
-  const handleChangePhone = async () => {
-    if (!newPhone || !token) return;
-
-    try {
-      await changeInfluencerPhone(influencer.id, newPhone);
-
-      toast.success(
-        "Phone changed from " + influencer.phoneNumber + " to " + newPhone,
-      );
-
-      // refetch(); // Refetch influencer data to get updated email and status
-      setShowPhoneDialog(false);
-      setNewPhone("");
-    } catch (error) {
-      toast.error("Failed to change phone");
-      console.error("Phone change error:", error);
     }
   };
 
@@ -838,39 +820,17 @@ export default function InfluencerDetail() {
       </Dialog>
 
       {/* Phone Dialog */}
-      <Dialog open={showPhoneDialog} onOpenChange={setShowPhoneDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Phone Number</DialogTitle>
-            <DialogDescription>
-              Update the phone number for {influencer.name}. This will require
-              the influencer to verify their new phone number.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="phone">New Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              className="mt-2"
-              placeholder="Enter new phone number"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPhoneDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleChangePhone}
-              disabled={!newPhone || newPhone === influencer.phoneNumber}
-            >
-              Update Phone
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChangePhoneDialog
+        open={showPhoneDialog}
+        onOpenChange={setShowPhoneDialog}
+        userId={influencer.id}
+        userName={influencer.name}
+        currentPhone={influencer.phoneNumber}
+        userType={influencer.userType}
+        onSuccess={() => {
+          // refetch(); // Uncomment if you want to refresh data after update
+        }}
+      />
     </>
   );
 }

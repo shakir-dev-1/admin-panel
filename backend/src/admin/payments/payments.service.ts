@@ -422,13 +422,35 @@ export class PaymentsService {
     let stripeResult: Stripe.Response<Stripe.Subscription> | null = null;
     if (businessSub.orderId) {
       try {
-        stripeResult = await this.stripe.subscriptions.cancel(
-          businessSub.orderId,
-        );
+        // First check if the subscription is already canceled in Stripe
+        try {
+          const existingSubscription = await this.stripe.subscriptions.retrieve(
+            businessSub.orderId,
+          );
+
+          if (existingSubscription.status === 'canceled') {
+            this.logger.log(
+              `Stripe subscription ${businessSub.orderId} is already canceled`,
+            );
+            stripeResult = existingSubscription;
+          } else {
+            // Only attempt to cancel if it's not already canceled
+            stripeResult = await this.stripe.subscriptions.cancel(
+              businessSub.orderId,
+            );
+          }
+        } catch (retrieveError) {
+          // If we can't retrieve the subscription, it might not exist in Stripe
+          this.logger.error(
+            `Failed to retrieve Stripe subscription: ${retrieveError.message}`,
+          );
+          // Continue with local cancellation only
+        }
       } catch (error) {
         this.logger.error(
           `Failed to cancel Stripe subscription: ${error.message}`,
         );
+        // Don't throw - we still want to cancel locally
       }
     }
 

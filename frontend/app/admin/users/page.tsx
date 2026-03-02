@@ -190,13 +190,19 @@ function UsersTable({
           "businesses" in user && user.businesses?.[0]?.name
             ? user.businesses[0].name.toLowerCase()
             : "";
+        const stripeAccountId =
+          "userType" in user &&
+          user.userType === "business" &&
+          "businesses" in user &&
+          user.businesses?.[0]?.stripeAccountId;
 
         return (
           id.includes(searchLower) ||
           name.includes(searchLower) ||
           email.includes(searchLower) ||
           phone.includes(searchLower) ||
-          businessName.includes(searchLower)
+          businessName.includes(searchLower) ||
+          (stripeAccountId && stripeAccountId.toLowerCase().includes(searchLower))
         );
       });
     }
@@ -343,7 +349,7 @@ function UsersTable({
         <SearchInput
           value={search}
           onChange={onSearchChange}
-          placeholder={`Search ${userType === "all" ? "all" : userType} users...`}
+          placeholder={`Search ${userType === "all" ? "all" : userType} users by name, email, phone, business, or stripe ID...`}
           className="flex-1"
         />
         <div className="flex gap-3">
@@ -487,15 +493,23 @@ function UsersTable({
                       user.businesses &&
                       user.businesses.length > 0
                     ) {
-                      // Business user case
-                      return user.businesses.map((b) => b.name);
+                      // Business user case - return both name and full business object
+                      return user.businesses.map((b) => ({
+                        name: b.name,
+                        stripeAccountId: b.stripeAccountId,
+                        fullObject: b,
+                      }));
                     } else if (
                       "businessClients" in user &&
                       user.businessClients &&
                       user.businessClients.length > 0
                     ) {
                       // Consumer case - they might be clients of businesses
-                      return user.businessClients.map((bc) => bc.business.name);
+                      return user.businessClients.map((bc) => ({
+                        name: bc.business.name,
+                        stripeAccountId: null, // Consumers don't have Stripe accounts
+                        fullObject: null,
+                      }));
                     }
                     return [];
                   })();
@@ -526,21 +540,51 @@ function UsersTable({
                       </td>
                       <td className="p-4">
                         {businesses.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            {businesses
-                              .slice(0, 2)
-                              .map((businessName, index) => (
-                                <span
-                                  key={index}
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary"
-                                >
-                                  {businessName}
-                                </span>
-                              ))}
+                          <div className="flex flex-col gap-2">
+                            {businesses.slice(0, 2).map((business, index) => {
+                              // Find the full business object to get stripeAccountId
+                              const fullBusiness =
+                                "businesses" in user && user.businesses
+                                  ? user.businesses[index]
+                                  : null;
+
+                              return (
+                                <div key={index} className="space-y-1">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
+                                    {typeof business === "string"
+                                      ? business
+                                      : business.name}
+                                  </span>
+                                  {fullBusiness?.stripeAccountId && (
+                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                                      <span>Stripe:</span>
+                                      <span
+                                        className="truncate max-w-[120px]"
+                                        title={fullBusiness.stripeAccountId}
+                                      >
+                                        {fullBusiness.stripeAccountId}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                             {businesses.length > 2 && (
-                              <span className="text-xs text-muted-foreground">
-                                +{businesses.length - 2} more
-                              </span>
+                              <>
+                                <span className="text-xs text-muted-foreground">
+                                  +{businesses.length - 2} more
+                                </span>
+                                {/* Check if any of the remaining businesses have stripeAccountId */}
+                                {"businesses" in user &&
+                                  user.businesses &&
+                                  user.businesses
+                                    .slice(2)
+                                    .some((b) => b.stripeAccountId) && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      (Some have Stripe accounts)
+                                    </span>
+                                  )}
+                              </>
                             )}
                           </div>
                         ) : (

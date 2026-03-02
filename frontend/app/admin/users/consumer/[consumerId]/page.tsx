@@ -69,6 +69,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn, safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useUserById } from "@/hooks/useUsers";
 import { useConsumerPaymentsByUserId } from "@/hooks/usePayments";
+import { ChangePhoneDialog } from "@/app/components/admin/ChangePhoneDialog";
 
 interface ApiUser {
   id: string;
@@ -335,24 +336,6 @@ export default function UserDetail() {
     }
   };
 
-  const handleChangePhone = async () => {
-    if (!newPhone || !token) return;
-
-    try {
-      await changePhone(user.id, newPhone);
-
-      toast.success(
-        "Phone changed from " + user.phoneNumber + " to " + newPhone,
-      );
-
-      setShowPhoneDialog(false);
-      setNewPhone("");
-    } catch (error) {
-      toast.error("Failed to change phone");
-      console.error("Phone change error:", error);
-    }
-  };
-
   const handleToggleStatus = async () => {
     const newStatus = !user.isBanned;
 
@@ -374,6 +357,8 @@ export default function UserDetail() {
     if (user.isBanned) return "BANNED";
     return "ACTIVE";
   };
+
+  // console.log("User data:", user);
 
   return (
     <>
@@ -1170,38 +1155,17 @@ export default function UserDetail() {
       </Dialog>
 
       {/* Phone Dialog */}
-      <Dialog open={showPhoneDialog} onOpenChange={setShowPhoneDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Phone Number</DialogTitle>
-            <DialogDescription>
-              Update the phone number for {user.name}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="phone">New Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              className="mt-2"
-              placeholder="Enter new phone number"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPhoneDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleChangePhone}
-              disabled={!newPhone || newPhone === user.phoneNumber}
-            >
-              Update Phone
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChangePhoneDialog
+        open={showPhoneDialog}
+        onOpenChange={setShowPhoneDialog}
+        userId={user.id}
+        userName={user.name}
+        currentPhone={user.phoneNumber}
+        userType={user.userType}
+        onSuccess={() => {
+          // refetch(); // Uncomment if you want to refresh data after update
+        }}
+      />
 
       {/* Status Confirmation */}
       <AlertDialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>

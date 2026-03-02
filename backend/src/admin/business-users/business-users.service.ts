@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -526,6 +527,7 @@ export class BusinessUsersService {
               select: {
                 id: true,
                 name: true,
+                stripeAccountId: true,
               },
             },
           },
@@ -563,6 +565,7 @@ export class BusinessUsersService {
         businesses: user.businesses.map((b) => ({
           id: b.business.id,
           name: b.business.name,
+          stripeAccountId: b.business.stripeAccountId,
         })),
         createdAt: user.createdAt,
         lastActivity: user.updatedAt,
@@ -1345,17 +1348,16 @@ export class BusinessUsersService {
   }
 
   /**
-   * Cancel a business subscription
+   * Cancel a business subscription (sets to cancel at period end)
    */
   async cancelSubscription(businessId: string) {
     this.logger.log(`Canceling subscription for business ID: ${businessId}`);
 
-    // Find the active subscription
     const businessSub = await this.prisma.businessSubscription.findFirst({
       where: {
         businessId,
         status: {
-          in: ['ACTIVE', 'TRIAL'],
+          in: ['ACTIVE', 'TRIAL'] as SubscriptionStatus[],
         },
       },
       include: {
@@ -1364,89 +1366,122 @@ export class BusinessUsersService {
     });
 
     if (!businessSub) {
-      throw new NotFoundException(
-        'No active subscription found for this business',
-      );
+      throw new NotFoundException('No active subscription found');
     }
 
     let stripeResult: Stripe.Response<Stripe.Subscription> | null = null;
+    let isAlreadyCanceled = false;
+    let isAlreadySetToCancel = false;
 
-    // If there's a Stripe subscription ID, update it first
     if (businessSub.orderId) {
       try {
-        stripeResult = await this.stripe.subscriptions.update(
+        // Try to retrieve the subscription first
+        const existingSub = await this.stripe.subscriptions.retrieve(
           businessSub.orderId,
-          {
-            cancel_at_period_end: true,
-          },
         );
 
-        this.logger.log(
-          `Stripe subscription ${businessSub.orderId} set to cancel at period end`,
-        );
-      } catch (error) {
-        this.logger.error(
-          `Failed to cancel Stripe subscription: ${error.message}`,
-        );
-        // Throw the error to prevent database update
-        throw new BadRequestException(
-          `Failed to cancel subscription in Stripe: ${error.message}`,
-        );
+        if (existingSub.status === 'canceled') {
+          isAlreadyCanceled = true;
+          stripeResult = existingSub;
+          this.logger.log(
+            `Subscription ${businessSub.orderId} is already canceled in Stripe`,
+          );
+        } else if (existingSub.cancel_at_period_end) {
+          // Already set to cancel at period end
+          isAlreadySetToCancel = true;
+          stripeResult = existingSub;
+          this.logger.log(
+            `Subscription ${businessSub.orderId} is already set to cancel at period end`,
+          );
+        } else {
+          // Not canceled, proceed with setting cancel_at_period_end
+          stripeResult = await this.stripe.subscriptions.update(
+            businessSub.orderId,
+            { cancel_at_period_end: true },
+          );
+          this.logger.log(
+            `Stripe subscription ${businessSub.orderId} set to cancel at period end`,
+          );
+        }
+      } catch (error: any) {
+        if (error.message?.includes('No such subscription')) {
+          this.logger.log(
+            `Subscription ${businessSub.orderId} not found in Stripe`,
+          );
+          // Treat as not existing in Stripe - we'll just update our DB
+          isAlreadyCanceled = true; // Mark as canceled for DB update
+        } else {
+          this.logger.error(`Stripe error: ${error.message}`);
+          throw new BadRequestException(`Stripe error: ${error.message}`);
+        }
       }
     }
 
-    // Only update database if Stripe update succeeded (or if there was no Stripe subscription)
-    try {
-      // Use a transaction to ensure all database operations succeed together
-      const updatedSubscription = await this.prisma.$transaction(async (tx) => {
-        // Update the subscription
-        const updated = await tx.businessSubscription.update({
-          where: { id: businessSub.id },
-          data: {
-            cancelAtPeriodEnd: true,
-            // Don't change status yet - will happen at period end
-          },
-          include: {
-            subscription: true,
-          },
-        });
+    // Update database
+    const updatedSubscription = await this.prisma.$transaction(async (tx) => {
+      // Create the update data object with proper typing
+      let updateData: Prisma.BusinessSubscriptionUpdateInput;
 
-        // Create history record
-        await tx.businessSubscriptionHistory.create({
-          data: {
-            businessSubscriptionId: businessSub.id,
-            eventType: 'CANCELLED',
-            subscriptionId: businessSub.orderId || businessSub.id,
-            oldPlanId: businessSub.subscriptionId,
-            startDate: businessSub.startDate,
-            endDate: businessSub.endDate,
-          },
-        });
+      if (isAlreadyCanceled) {
+        // If already canceled in Stripe, mark as cancelled in DB
+        updateData = {
+          status: 'CANCELLED',
+          canceledDate: new Date(),
+          cancelAtPeriodEnd: false,
+          endDate: new Date(),
+        };
+      } else {
+        // Otherwise, just set to cancel at period end (don't change status yet)
+        updateData = {
+          cancelAtPeriodEnd: true,
+          // Don't change status - will happen at period end
+        };
+      }
 
-        return updated;
+      const updated = await tx.businessSubscription.update({
+        where: { id: businessSub.id },
+        data: updateData,
       });
 
-      return {
-        success: true,
-        message:
-          'Subscription will be canceled at the end of the billing period',
-        subscription: {
-          id: updatedSubscription.id,
-          status: updatedSubscription.status,
-          cancelAtPeriodEnd: updatedSubscription.cancelAtPeriodEnd,
-          endDate: updatedSubscription.endDate,
-          plan: updatedSubscription.subscription.title,
+      // Create history record
+      await tx.businessSubscriptionHistory.create({
+        data: {
+          businessSubscriptionId: businessSub.id,
+          eventType: 'CANCELLED',
+          subscriptionId: businessSub.orderId || businessSub.id,
+          oldPlanId: businessSub.subscriptionId,
+          startDate: businessSub.startDate,
+          endDate: businessSub.endDate,
         },
-        stripeResult,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Failed to update database after Stripe cancellation: ${error.message}`,
-      );
-      throw new BadRequestException(
-        'Failed to update subscription status in database',
-      );
+      });
+
+      return updated;
+    });
+
+    // Construct appropriate message
+    let message = '';
+    if (isAlreadyCanceled) {
+      message = 'Subscription was already canceled. Database synchronized.';
+    } else if (isAlreadySetToCancel) {
+      message =
+        'Subscription was already scheduled for cancellation at period end.';
+    } else {
+      message =
+        'Subscription will be canceled at the end of the billing period';
     }
+
+    return {
+      success: true,
+      message,
+      subscription: {
+        id: updatedSubscription.id,
+        status: updatedSubscription.status,
+        cancelAtPeriodEnd: updatedSubscription.cancelAtPeriodEnd,
+        endDate: updatedSubscription.endDate,
+        plan: businessSub.subscription?.title || 'Unknown',
+      },
+      ...(stripeResult && { stripeData: stripeResult }),
+    };
   }
 
   /**
@@ -1461,7 +1496,7 @@ export class BusinessUsersService {
       where: {
         businessId,
         status: {
-          in: ['ACTIVE', 'TRIAL'],
+          in: ['ACTIVE', 'TRIAL'] as SubscriptionStatus[],
         },
       },
     });
@@ -1473,66 +1508,121 @@ export class BusinessUsersService {
     }
 
     let stripeResult: Stripe.Response<Stripe.Subscription> | null = null;
+    let stripeCancelSuccess = false;
+    let stripeNotFound = false;
 
-    // First cancel in Stripe
+    // First try to cancel in Stripe if there's an orderId
     if (businessSub.orderId) {
       try {
-        stripeResult = await this.stripe.subscriptions.cancel(
-          businessSub.orderId,
-        );
-        this.logger.log(`Stripe subscription ${businessSub.orderId} cancelled`);
-      } catch (error) {
+        // First check if the subscription exists in Stripe
+        try {
+          const existingSub = await this.stripe.subscriptions.retrieve(
+            businessSub.orderId,
+          );
+
+          if (existingSub.status === 'canceled') {
+            this.logger.log(
+              `Stripe subscription ${businessSub.orderId} is already canceled`,
+            );
+            stripeCancelSuccess = true;
+            stripeResult = existingSub;
+          } else {
+            // Cancel the subscription
+            stripeResult = await this.stripe.subscriptions.cancel(
+              businessSub.orderId,
+            );
+            stripeCancelSuccess = true;
+            this.logger.log(
+              `Stripe subscription ${businessSub.orderId} cancelled`,
+            );
+          }
+        } catch (retrieveError: any) {
+          if (retrieveError.message?.includes('No such subscription')) {
+            this.logger.log(
+              `Stripe subscription ${businessSub.orderId} not found in Stripe`,
+            );
+            stripeNotFound = true;
+            // Treat as success for database update since it doesn't exist in Stripe
+            stripeCancelSuccess = true;
+          } else {
+            throw retrieveError;
+          }
+        }
+      } catch (error: any) {
         this.logger.error(
           `Failed to cancel Stripe subscription: ${error.message}`,
         );
-        throw new BadRequestException(
-          `Failed to cancel subscription in Stripe: ${error.message}`,
-        );
+
+        // If it's a "no such subscription" error, we can still update the database
+        if (error.message?.includes('No such subscription')) {
+          this.logger.log(
+            `Stripe subscription ${businessSub.orderId} not found - will update database only`,
+          );
+          stripeNotFound = true;
+          stripeCancelSuccess = true;
+        } else {
+          throw new BadRequestException(
+            `Failed to cancel subscription in Stripe: ${error.message}`,
+          );
+        }
       }
+    } else {
+      // No Stripe subscription ID, so we can just update the database
+      stripeCancelSuccess = true;
     }
 
-    // Only update database if Stripe cancellation succeeded
-    try {
-      const updatedSubscription = await this.prisma.$transaction(async (tx) => {
-        // Update database to cancelled
-        const updated = await tx.businessSubscription.update({
-          where: { id: businessSub.id },
-          data: {
-            status: 'CANCELLED',
-            canceledDate: new Date(),
-            cancelAtPeriodEnd: false,
-            endDate: new Date(), // Set end date to now
+    // Update database if Stripe operation succeeded or subscription wasn't found
+    if (stripeCancelSuccess) {
+      try {
+        const updatedSubscription = await this.prisma.$transaction(
+          async (tx) => {
+            const now = new Date();
+
+            // Update database to cancelled
+            const updated = await tx.businessSubscription.update({
+              where: { id: businessSub.id },
+              data: {
+                status: 'CANCELLED',
+                canceledDate: now,
+                cancelAtPeriodEnd: false,
+                endDate: now, // Set end date to now
+              },
+            });
+
+            // Create history record with appropriate metadata
+            await tx.businessSubscriptionHistory.create({
+              data: {
+                businessSubscriptionId: businessSub.id,
+                eventType: 'CANCELLED',
+                subscriptionId: businessSub.orderId || businessSub.id,
+                oldPlanId: businessSub.subscriptionId,
+                startDate: businessSub.startDate,
+                endDate: now,
+              },
+            });
+
+            return updated;
           },
-        });
+        );
 
-        // Create history record
-        await tx.businessSubscriptionHistory.create({
-          data: {
-            businessSubscriptionId: businessSub.id,
-            eventType: 'CANCELLED',
-            subscriptionId: businessSub.orderId || businessSub.id,
-            oldPlanId: businessSub.subscriptionId,
-            startDate: businessSub.startDate,
-            endDate: businessSub.endDate,
-          },
-        });
-
-        return updated;
-      });
-
-      return {
-        success: true,
-        message: 'Subscription immediately canceled',
-        subscription: updatedSubscription,
-        stripeResult,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Failed to update database after Stripe cancellation: ${error.message}`,
-      );
-      throw new BadRequestException(
-        'Failed to update subscription status in database',
-      );
+        return {
+          success: true,
+          message: stripeNotFound
+            ? 'Subscription cancelled locally (Stripe subscription not found)'
+            : 'Subscription immediately canceled',
+          subscription: updatedSubscription,
+          ...(stripeResult && { stripeData: stripeResult }),
+        };
+      } catch (error: any) {
+        this.logger.error(
+          `Failed to update database after Stripe cancellation: ${error.message}`,
+        );
+        throw new BadRequestException(
+          'Failed to update subscription status in database',
+        );
+      }
+    } else {
+      throw new BadRequestException('Failed to cancel subscription in Stripe');
     }
   }
 

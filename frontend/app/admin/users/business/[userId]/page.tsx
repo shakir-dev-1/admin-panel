@@ -74,6 +74,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
+import { ChangePhoneDialog } from "@/app/components/admin/ChangePhoneDialog";
 
 export default function BusinessUserDetail() {
   const params = useParams();
@@ -199,7 +200,7 @@ export default function BusinessUserDetail() {
       setIsResetting(false);
     }
   };
-  
+
   const handleChangeEmail = async () => {
     if (!newEmail || !token) return;
 
@@ -212,23 +213,6 @@ export default function BusinessUserDetail() {
     } catch (error) {
       toast.error("Failed to change email");
       console.error("Email change error:", error);
-    }
-  };
-
-  const handleChangePhone = async () => {
-    if (!newPhone || !token) return;
-
-    try {
-      await changePhone(user.id, newPhone, true);
-      toast.success(
-        "Phone changed from " + user.phoneNumber + " to " + newPhone,
-      );
-      refetch();
-      setShowPhoneDialog(false);
-      setNewPhone("");
-    } catch (error) {
-      toast.error("Failed to change phone");
-      console.error("Phone change error:", error);
     }
   };
 
@@ -1529,38 +1513,17 @@ export default function BusinessUserDetail() {
       </Dialog>
 
       {/* Phone Dialog */}
-      <Dialog open={showPhoneDialog} onOpenChange={setShowPhoneDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Phone Number</DialogTitle>
-            <DialogDescription>
-              Update the phone number for {getUserName()}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="phone">New Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              className="mt-2"
-              placeholder="Enter new phone number"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPhoneDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleChangePhone}
-              disabled={!newPhone || newPhone === user.phoneNumber}
-            >
-              Update Phone
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChangePhoneDialog
+        open={showPhoneDialog}
+        onOpenChange={setShowPhoneDialog}
+        userId={user.id}
+        userName={user.fullName || user.email}
+        currentPhone={user.phoneNumber}
+        userType={user.userType || "business"} // Default to businessUser if userType is missing
+        onSuccess={() => {
+          // refetch(); // Uncomment if you want to refresh data after update
+        }}
+      />
     </>
   );
 }

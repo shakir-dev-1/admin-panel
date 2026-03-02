@@ -609,7 +609,7 @@ function ConsumerPaymentsTab({
                         {format(new Date(p.createdAt), "MMM d, yyyy")}
                       </td>
 
-                      <td className="px-4 py-3 text-right">
+                      {/* <td className="px-4 py-3 text-right">
                         {(p.paymentStatus === "PAID" ||
                           p.paymentStatus === "PAID_OUT") && (
                           <Button
@@ -622,7 +622,7 @@ function ConsumerPaymentsTab({
                             Refund
                           </Button>
                         )}
-                      </td>
+                      </td> */}
                     </tr>
                   ))
                 )}

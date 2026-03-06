@@ -1310,7 +1310,7 @@ function SubscriptionsTab({ onCancel, cancellingId }: SubscriptionsTabProps) {
                             "—"
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        {/* <td className="px-4 py-3">
                           {isActive && onCancel && (
                             <CancelSubscriptionCell
                               subscription={{
@@ -1327,7 +1327,7 @@ function SubscriptionsTab({ onCancel, cancellingId }: SubscriptionsTabProps) {
                               invalidateQueries={[["businessSubscriptions"]]}
                             />
                           )}
-                        </td>
+                        </td> */}
                       </tr>
                     );
                   })
@@ -2020,7 +2020,7 @@ export default function Payments() {
             → Platform)
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleOpenCreatePayment}>
             <Plus className="mr-2 h-4 w-4" />
             Create Test Payment
@@ -2033,7 +2033,7 @@ export default function Payments() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Sync Stripe
           </Button>
-        </div>
+        </div> */}
       </div>
 
       {/* Stats */}

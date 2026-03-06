@@ -216,7 +216,7 @@ export default function AdminLoginPage() {
         errorMessage = "Network Error";
         errorDescription =
           "Unable to connect to the server. Please check your internet connection.";
-      } else if (err.message.includes("401")) {
+      } else if (err.message.includes("Invalid credentials")) {
         errorMessage = "Authentication Failed";
         errorDescription = "The email or password you entered is incorrect.";
       } else if (err.message.includes("403")) {

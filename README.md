@@ -171,7 +171,7 @@ Audit logs help with accountability and tracking actions performed through the p
 ## 🧩 Security Considerations
 
 * **HTTPS only:** Always serve over HTTPS in production
-* **Token expiration:** JWT expires in `24h` by default
+* **Token expiration:** JWT expires in `8h` by default
 * **Refresh Tokens:** Not currently implemented for admin — add if required
 * **Role Enforcement:** Only Super Admin role exists; more granular roles can be added later
 * **Rate limiting:** Add request throttling to prevent brute-force login attempts

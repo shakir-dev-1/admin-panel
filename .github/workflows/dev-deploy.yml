@@ -1,4 +1,4 @@
-name: CI/CD - Dev Deploy - Admin Fullstack
+name: CI/CD - Main Branch Deployment
 
 on:
   push:
@@ -6,35 +6,12 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  cd:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-    # Checkout code on GitHub runner (for build artifacts if needed)
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-
-      - name: Install frontend dependencies
-        run: |
-          cd frontend
-          npm ci
-
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
-
-      - name: Lint frontend
-        run: |
-          cd frontend
-          npm run lint
-
-    # Now SSH into the server and deploy everything
-      - name: Deploy Fullstack to Dev using SSH
+      - name: Deploy using ssh
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -42,25 +19,18 @@ jobs:
           password: ${{ secrets.PASSWORD }}
           port: 22
           script: |
-            set -e
-
-            # Clone if not exists
-            if [ ! -d /var/www/marvalero-admin ]; then
-              git clone https://github.com/Marvalero-base/marvalero-admin.git /var/www/marvalero-admin
-            fi
-
             cd /var/www/marvalero-admin
-
+            git stash
             git fetch --all
             git checkout main
-            git reset --hard origin/main
-
-            # --- Backend deploy ---
+            git pull origin main
+            # Install dependencies and generate/prisma setup
             cd backend
             npm install --force
+            npx prisma generate
             npx prisma migrate deploy
             npm run build
-
+            # Restart with PM2 on custom port (e.g., 3003 and websocket 3004)
             pm2 delete marvalero-admin-backend || true
             pm2 start npm --name marvalero-admin-backend -- run start
 

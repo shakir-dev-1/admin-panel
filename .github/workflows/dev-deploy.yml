@@ -1,0 +1,74 @@
+name: CI/CD - Dev Deploy - Admin Fullstack
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout code on GitHub runner (for build artifacts if needed)
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Lint frontend
+        run: |
+          cd frontend
+          npm run lint
+
+    # Now SSH into the server and deploy everything
+      - name: Deploy Fullstack to Dev using SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
+          port: 22
+          script: |
+            set -e
+
+            # Clone if not exists
+            if [ ! -d /var/www/marvalero-admin ]; then
+              git clone https://github.com/Marvalero-base/marvalero-admin.git /var/www/marvalero-admin
+            fi
+
+            cd /var/www/marvalero-admin
+
+            git fetch --all
+            git checkout main
+            git reset --hard origin/main
+
+            # --- Backend deploy ---
+            cd backend
+            npm install --force
+            npx prisma migrate deploy
+            npm run build
+
+            pm2 delete marvalero-admin-backend || true
+            pm2 start npm --name marvalero-admin-backend -- run start
+
+            # --- Frontend deploy ---
+
+            cd ../frontend
+            npm ci
+            npm run build
+
+            pm2 delete marvalero-admin-frontend || true
+            pm2 start npm --name marvalero-admin-frontend -- run start -- -p 5000

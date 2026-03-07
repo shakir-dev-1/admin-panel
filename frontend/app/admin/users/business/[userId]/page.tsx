@@ -75,6 +75,7 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { ChangePhoneDialog } from "@/app/components/admin/ChangePhoneDialog";
+import { ResetPasswordDialog } from "@/app/components/admin/ResetPasswordDialog";
 
 export default function BusinessUserDetail() {
   const params = useParams();
@@ -1410,72 +1411,18 @@ export default function BusinessUserDetail() {
       </div>
 
       {/* Password Reset Dialog */}
-      <Dialog
+      <ResetPasswordDialog
         open={showResetPasswordDialog}
         onOpenChange={setShowResetPasswordDialog}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              Set a new password for {user.firstName} ({user.email}).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div>
-              <Label htmlFor="new-password">New Password</Label>
-              <Input
-                id="new-password"
-                //type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="mt-2"
-                placeholder="Enter new password"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Password must be at least 6 characters long
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="confirm-password">Confirm Password</Label>
-              <Input
-                id="confirm-password"
-                // type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-2"
-                placeholder="Confirm new password"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowResetPasswordDialog(false);
-                setNewPassword("");
-                setConfirmPassword("");
-              }}
-              disabled={isResetting}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleResetPassword}
-              disabled={!newPassword || !confirmPassword || isResetting}
-            >
-              {isResetting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Resetting...
-                </>
-              ) : (
-                "Reset Password"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        userId={user.id}
+        userEmail={user.email}
+        userName={user.username || ""}
+        userType="business"
+        onSuccess={() => {
+          // Optional: Refresh data after password reset
+          // refetch();
+        }}
+      />
 
       {/* Email Dialog */}
       <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>

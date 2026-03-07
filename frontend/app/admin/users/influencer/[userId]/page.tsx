@@ -66,6 +66,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { safeFormatDate } from "@/lib/utils";
 import { useUsersManagement, useInfluencerById } from "@/hooks/useUsers";
 import { ChangePhoneDialog } from "@/app/components/admin/ChangePhoneDialog";
+import { ResetPasswordDialog } from "@/app/components/admin/ResetPasswordDialog";
 
 interface ApiInfluencer {
   id: string;
@@ -717,72 +718,18 @@ export default function InfluencerDetail() {
       </div>
 
       {/* Password Reset Dialog */}
-      <Dialog
+      <ResetPasswordDialog
         open={showResetPasswordDialog}
         onOpenChange={setShowResetPasswordDialog}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              Set a new password for {influencer.name} ({influencer.email}).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div>
-              <Label htmlFor="new-password">New Password</Label>
-              <Input
-                id="new-password"
-                //type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="mt-2"
-                placeholder="Enter new password"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Password must be at least 6 characters long
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="confirm-password">Confirm Password</Label>
-              <Input
-                id="confirm-password"
-                // type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-2"
-                placeholder="Confirm new password"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowResetPasswordDialog(false);
-                setNewPassword("");
-                setConfirmPassword("");
-              }}
-              disabled={isResetting}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleResetPassword}
-              disabled={!newPassword || !confirmPassword || isResetting}
-            >
-              {isResetting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Resetting...
-                </>
-              ) : (
-                "Reset Password"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        userId={influencer.id}
+        userEmail={influencer.email}
+        userName={influencer.name || ""}
+        userType="influencer"
+        onSuccess={() => {
+          // Optional: Refresh data after password reset
+          // refetch();
+        }}
+      />
 
       {/* Email Dialog */}
       <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>

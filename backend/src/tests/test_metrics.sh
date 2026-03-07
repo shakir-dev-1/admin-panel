@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set your API base URL
-API_URL="http://localhost:3000"
+API_URL="http://localhost:3001/api"
 
 echo "1. Logging in as admin..."
 TOKEN=$(curl -s -X POST "$API_URL/admin/auth/login" \
@@ -25,5 +25,11 @@ curl -X GET "$API_URL/admin/metrics" \
 
 echo -e "\n3. Testing unauthenticated metrics endpoint..."
 curl -X GET "$API_URL/admin/metrics" \
+  -H "Content-Type: application/json" \
+  -w "\n\nHTTP Status: %{http_code}\n"
+
+echo -e "\n2. Testing authenticated admin stats endpoint..."
+curl -X GET "$API_URL/admin/stats" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -w "\n\nHTTP Status: %{http_code}\n"

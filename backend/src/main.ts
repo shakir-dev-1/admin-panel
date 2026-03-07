@@ -1,4 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NestFactory } from '@nestjs/core';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { AuditInterceptor } from './audit/audit.interceptor.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -41,6 +45,16 @@ async function bootstrap() {
   // Interceptors should usually come AFTER CORS/Prefix setup
   const auditInterceptor = app.get(AuditInterceptor);
   app.useGlobalInterceptors(auditInterceptor);
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const config = new DocumentBuilder()
+    .setTitle('Admin API')
+    .setDescription('All endpoints and auth testing')
+    .setVersion('1.0')
+    .addBearerAuth() // adds auth UI support
+    .build();
+  const doc = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api-docs', app, doc);
 
   await app.listen(process.env.PORT ?? 3001);
 }

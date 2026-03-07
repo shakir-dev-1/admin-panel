@@ -38,6 +38,11 @@ export class AdminController {
     return { message: 'Admin dashboard' };
   }
 
+  @Get('stats')
+  async getAllMetrics() {
+    return this.adminService.getSystemStatistics();
+  }
+
   @Get('admins/:id')
   async getAdminById(@Param('id') id: string): Promise<AdminModel> {
     const admin = await this.adminService.admin({ id });

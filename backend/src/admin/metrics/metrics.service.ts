@@ -277,27 +277,38 @@ export class MetricsService {
       verifiedBusinesses,
       businessesWithSubscriptions,
       businessesWithPayoutInfo,
+
+      // **Appointments**
+      totalAppointments,
+      activeAppointments,
+      completedAppointments,
     ] = await Promise.all([
       this.prisma.business.count(),
+      this.prisma.business.count({ where: { isVerified: true } }),
       this.prisma.business.count({
-        where: { isVerified: true },
+        where: {
+          subscription: { some: { status: 'ACTIVE' } },
+        },
       }),
       this.prisma.business.count({
         where: {
-          subscription: {
-            some: {
-              status: 'ACTIVE',
-            },
-          },
+          payoutInfo: { some: {} },
         },
       }),
-      // Fix: For one-to-many relations, use 'some' with a condition
-      this.prisma.business.count({
+
+      // Count all appointments
+      this.prisma.appointment.count(),
+
+      // Count active/upcoming appointments
+      this.prisma.appointment.count({
         where: {
-          payoutInfo: {
-            some: {}, // At least one payout info exists
-          },
+          status: { in: ['CREATED', 'CONFIRMED', 'CHECKED_IN'] },
         },
+      }),
+
+      // Count completed appointments
+      this.prisma.appointment.count({
+        where: { status: 'COMPLETED' },
       }),
     ]);
 
@@ -316,6 +327,13 @@ export class MetricsService {
         totalBusinesses > 0
           ? (businessesWithPayoutInfo / totalBusinesses) * 100
           : 0,
+
+      // **Appointments**
+      totalAppointments,
+      activeAppointments,
+      completedAppointments,
+      averageAppointmentsPerBusiness:
+        totalBusinesses > 0 ? totalAppointments / totalBusinesses : 0,
     };
   }
 

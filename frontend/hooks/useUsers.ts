@@ -750,7 +750,7 @@ export function useUsersManagement() {
     isBusinessUser = false,
   ) => {
     if (!token) throw new Error("No authentication token");
-    console.log("isBusinessUser: ", isBusinessUser);
+    // console.log("isBusinessUser: ", isBusinessUser);
 
     const endpoint = isBusinessUser
       ? `/admin/business/users/${userId}/phone`

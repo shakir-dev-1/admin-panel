@@ -186,6 +186,20 @@ function ExpandedRow({ log }: { log: AuditLogType }) {
                   <DetailRow label="Admin" value="System / Anonymous" />
                 )}
 
+                {/* IP Address */}
+                {log.metadata && (
+                  <>
+                    <DetailRow
+                      label="IP Address"
+                      value={log.metadata.ipAddress?.toString() || "Unknown"}
+                    />
+                    <DetailRow
+                      label="User Agent"
+                      value={log.metadata.userAgent?.toString() || "Unknown"}
+                    />
+                  </>
+                )}
+
                 {/* Target user info */}
                 {log.targetUser ? (
                   <>

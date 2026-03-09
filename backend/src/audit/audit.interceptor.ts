@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Injectable,
   NestInterceptor,
@@ -8,17 +10,19 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
-import { Reflector } from '@nestjs/core'; // Add this import
+import { Reflector } from '@nestjs/core';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AUDIT_KEY } from './audit.decorator.js';
 
-// Simplified metadata structure - only store what's needed for audit
+// Update the interface to include ipAddress
 interface AuditMetadata extends Record<string, any> {
   method: string;
   path: string;
   statusCode: number;
   duration: number;
+  ipAddress?: string;
+  userAgent?: string; // Optional: also log user agent
   query?: Record<string, string | string[]>;
   error?: string;
   stack?: string;
@@ -62,8 +66,47 @@ export class AuditInterceptor implements NestInterceptor {
 
   constructor(
     private prisma: PrismaService,
-    private reflector: Reflector, // Inject Reflector
+    private reflector: Reflector,
   ) {}
+
+  // Helper method to extract IP address from request
+  private getClientIp(request: Request): string | undefined {
+    // Try x-forwarded-for header first (when behind proxy/load balancer)
+    const forwardedFor = request.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      // x-forwarded-for can be a string or array of IPs
+      const ips = Array.isArray(forwardedFor)
+        ? forwardedFor[0]
+        : forwardedFor.split(',')[0];
+      return ips.trim();
+    }
+
+    // Try x-real-ip header (common in nginx)
+    const realIp = request.headers['x-real-ip'];
+    if (realIp) {
+      return Array.isArray(realIp) ? realIp[0] : realIp;
+    }
+
+    // Fall back to request.connection.remoteAddress
+    const remoteAddress = request.socket?.remoteAddress;
+    if (remoteAddress) {
+      // Handle IPv6 localhost
+      return remoteAddress === '::1' ? '127.0.0.1' : remoteAddress;
+    }
+
+    // Last resort: request.ip (Express-specific)
+    return (request as any).ip;
+  }
+
+  // Helper method to extract user agent
+  private getUserAgent(request: Request): string | undefined {
+    const userAgent = request.headers['user-agent'];
+    return userAgent
+      ? Array.isArray(userAgent)
+        ? userAgent[0]
+        : userAgent
+      : undefined;
+  }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context
@@ -93,6 +136,10 @@ export class AuditInterceptor implements NestInterceptor {
     const params = request.params as Record<string, string>;
     const query = request.query as Record<string, string | string[]>;
 
+    // Extract IP and user agent
+    const ipAddress = this.getClientIp(request);
+    const userAgent = this.getUserAgent(request);
+
     // Extract targetUserId from various possible locations
     const targetUserId = this.extractTargetUserId(params, body, path);
 
@@ -110,12 +157,14 @@ export class AuditInterceptor implements NestInterceptor {
               await this.logAction({
                 adminId,
                 targetUserId,
-                actionType: auditAction, // Use the decorated action type
+                actionType: auditAction,
                 metadata: {
                   method,
                   path,
                   statusCode,
                   duration,
+                  ipAddress, // Add IP address
+                  userAgent, // Add user agent
                   query: Object.keys(query).length > 0 ? query : undefined,
                   requestBody: body,
                   responseSummary: this.getResponseSummary(data),
@@ -138,12 +187,14 @@ export class AuditInterceptor implements NestInterceptor {
             await this.logAction({
               adminId,
               targetUserId,
-              actionType: auditAction, // Use the decorated action type
+              actionType: auditAction,
               metadata: {
                 method,
                 path,
                 statusCode,
                 duration,
+                ipAddress, // Add IP address
+                userAgent, // Add user agent
                 query: Object.keys(query).length > 0 ? query : undefined,
                 requestBody: body,
                 error: err.message,
@@ -178,7 +229,13 @@ export class AuditInterceptor implements NestInterceptor {
       },
     });
 
-    this.logger.log(`Audit Log: ${data.actionType} by admin ${data.adminId}`);
+    // Include IP in log message for easier debugging
+    const ipInfo = data.metadata.ipAddress
+      ? ` from IP ${data.metadata.ipAddress}`
+      : '';
+    this.logger.log(
+      `Audit Log: ${data.actionType} by admin ${data.adminId}${ipInfo}`,
+    );
   }
 
   /**

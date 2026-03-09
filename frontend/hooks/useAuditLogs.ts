@@ -32,6 +32,8 @@ export interface AuditLog {
     id: string;
     email: string;
   } | null;
+  ipAddress?: string; 
+  userAgent?: string; 
   targetUser: {
     id: string;
     // Optional: you can keep these as optional if you want to add them later

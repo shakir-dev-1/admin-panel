@@ -73,7 +73,7 @@ interface AuthAuditMetadata {
   duration: number;
   timestamp: string;
   success: boolean;
-  ip?: string;
+  ipAddress?: string;
   userAgent?: string;
   error?: string;
   stack?: string;
@@ -108,7 +108,7 @@ export class AuthAuditInterceptor implements NestInterceptor {
     const email = body.email;
 
     const startTime = Date.now();
-    const ip =
+    const ipAddress =
       request.ip || (request.headers['x-forwarded-for'] as string) || 'unknown';
     const userAgent = request.headers['user-agent'] || 'unknown';
 
@@ -138,7 +138,7 @@ export class AuthAuditInterceptor implements NestInterceptor {
             duration,
             timestamp: new Date().toISOString(),
             success: true,
-            ip,
+            ipAddress,
             userAgent,
             attemptedEmail: email,
           };
@@ -185,7 +185,7 @@ export class AuthAuditInterceptor implements NestInterceptor {
           duration,
           timestamp: new Date().toISOString(),
           success: false,
-          ip,
+          ipAddress,
           userAgent,
           error: errorMessage,
           stack: stackTrace,

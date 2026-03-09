@@ -11,6 +11,7 @@
     "postinstall": "prisma generate",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "start:prod": "node dist/src/main.js",
     "seed:admin": "ts-node prisma/admin-seed.ts",
     "prisma:seed": "prisma db seed",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./jest-unit.json",

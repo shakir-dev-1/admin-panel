@@ -61,6 +61,10 @@ export type BusinessMetrics = {
   verificationRate: number;
   subscriptionRate: number;
   payoutInfoRate: number;
+  totalAppointments: number;
+  activeAppointments: number;
+  completedAppointments: number;
+  averageAppointmentsPerBusiness: number;
 };
 
 // Login analytics type - matches backend response
@@ -192,6 +196,11 @@ export function useBusinessMetrics() {
         verificationRate: data.verificationRate ?? 0,
         subscriptionRate: data.subscriptionRate ?? 0,
         payoutInfoRate: data.payoutInfoRate ?? 0,
+        totalAppointments: data.totalAppointments ?? 0,
+        activeAppointments: data.activeAppointments ?? 0,
+        completedAppointments: data.completedAppointments ?? 0,
+        averageAppointmentsPerBusiness:
+          data.averageAppointmentsPerBusiness ?? 0,
       };
     },
     enabled: !!token,
@@ -272,6 +281,11 @@ export function useAllMetrics() {
           verificationRate: data.business?.verificationRate ?? 0,
           subscriptionRate: data.business?.subscriptionRate ?? 0,
           payoutInfoRate: data.business?.payoutInfoRate ?? 0,
+          totalAppointments: data.business?.totalAppointments ?? 0,
+          activeAppointments: data.business?.activeAppointments ?? 0,
+          completedAppointments: data.business?.completedAppointments ?? 0,
+          averageAppointmentsPerBusiness:
+            data.business?.averageAppointmentsPerBusiness ?? 0,
         },
       };
     },

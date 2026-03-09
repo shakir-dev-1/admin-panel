@@ -13,6 +13,10 @@ import {
   Mail,
   Ban,
   Clock,
+  CalendarDays,
+  Zap,
+  CheckCircle2,
+  BarChart3,
 } from "lucide-react";
 import { StatCard } from "@/app/components/admin/StatCard";
 import { useAllMetrics, useLoginAnalytics } from "@/hooks/useMetrics";
@@ -321,6 +325,36 @@ export default function Dashboard() {
               icon={<Users className="h-6 w-6 text-blue-500" />}
               subtitle={`${businessMetrics.payoutInfoRate.toFixed(1)}% of businesses`}
               tooltip="Businesses that have configured their payout information for receiving payments"
+            />
+          </div>
+          {/* ─── Appointments Metrics Section ─────────────────────────────────── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Total Appointments"
+              value={businessMetrics.totalAppointments}
+              icon={<CalendarDays className="h-6 w-6 text-primary" />}
+              tooltip="Total number of appointments across all businesses"
+            />
+
+            <StatCard
+              title="Active Appointments"
+              value={businessMetrics.activeAppointments}
+              icon={<Zap className="h-6 w-6 text-status-active" />}
+              tooltip="Appointments currently in progress or upcoming"
+            />
+
+            <StatCard
+              title="Completed Appointments"
+              value={businessMetrics.completedAppointments}
+              icon={<CheckCircle2 className="h-6 w-6 text-status-completed" />}
+              tooltip="Appointments that have been completed"
+            />
+
+            <StatCard
+              title="Avg Appointments / Business"
+              value={Math.round(businessMetrics.averageAppointmentsPerBusiness)}
+              icon={<BarChart3 className="h-6 w-6 text-chart-2" />}
+              tooltip="Average appointments per registered business"
             />
           </div>
         </>

@@ -32,7 +32,7 @@ jobs:
             npm run build
             # Restart with PM2 on custom port (e.g., 3003 and websocket 3004)
             pm2 delete marvalero-admin-backend || true
-            pm2 start npm --name marvalero-admin-backend -- run start
+            pm2 start dist/main.js --name marvalero-admin-backend
 
             # --- Frontend deploy ---
 

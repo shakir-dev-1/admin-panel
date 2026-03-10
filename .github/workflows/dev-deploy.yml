@@ -18,7 +18,10 @@ jobs:
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
           port: 22
+          command_timeout: 20m # allow longer remote command execution
           script: |
+            export DATABASE_URL='${{ secrets.DATABASE_URL }}'
+
             cd /var/www/marvalero-admin
             git stash
             git fetch --all
